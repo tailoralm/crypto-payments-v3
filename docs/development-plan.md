@@ -2,284 +2,158 @@
 
 ## Phase 1: Backend Scaffolding
 
-- [ ] Initialize `backend/package.json` with Node.js + Express + TypeScript
-- [ ] Configure `tsconfig.json` with `strict: true`
-- [ ] Create folder structure:
-  ```
-  src/
-  ├── modules/
-  │   ├── auth/
-  │   ├── users/
-  │   ├── wallets/
-  │   ├── payments/
-  │   ├── api-tokens/
-  │   ├── reports/
-  │   ├── configs/
-  │   ├── custom-contracts/
-  │   └── blockchain/
-  ├── jobs/
-  │   └── payment-poller.job.ts
-  ├── db/
-  │   ├── knexfile.ts
-  │   └── migrations/
-  ├── common/
-  │   ├── middlewares/
-  │   └── validators/
-  └── server.ts
-  ```
-- [ ] Install dependencies: `express`, `knex`, `pg`, `jsonwebtoken`, `bcrypt`, `node-cron`, `express-rate-limit`, `dotenv`, `axios`, `crypto-js`
-- [ ] Install dev dependencies: `typescript`, `ts-node`, `nodemon`, `@types/*`
-- [ ] Configure `knexfile.ts` reading from env vars (`DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`)
-- [ ] Create `server.ts` entry point with Express app, CORS, JSON parsing, health check
-- [ ] Add npm scripts: `dev` (ts-node + nodemon), `build`, `start`, `migrate`, `seed`
+- [x] Initialize `backend/package.json` with Node.js + Express + TypeScript
+- [x] Configure `tsconfig.json` with `strict: true`
+- [x] Create folder structure
+- [x] Install dependencies
+- [x] Install dev dependencies
+- [x] Configure `knexfile.ts` reading from env vars
+- [x] Create `server.ts` entry point with Express app, CORS, JSON parsing, health check
+- [x] Add npm scripts
 - [ ] Add Dockerfile adjustments if needed for dev workflow
 
 ## Phase 2: Database Migrations
 
-- [ ] Migration: create `users` table
-  - `id` uuid PK
-  - `email` string unique
-  - `password_hash` string
-  - `etherscan_api_key` string (encrypted, nullable)
-  - `solscan_api_key` string (encrypted, nullable)
-  - `rate_limit_enabled` boolean default false
-  - `rate_limit_max_requests` integer nullable
-  - `rate_limit_window_minutes` integer nullable
-  - `created_at` / `updated_at` timestamps
-- [ ] Migration: create `tokens` table (system-defined)
-  - `id` uuid PK
-  - `chain` string (ethereum | solana)
-  - `symbol` string
-  - `contract_address` string
-  - `decimals` integer
-  - `is_system_default` boolean
-- [ ] Migration: create `wallets` table
-  - `id` uuid PK
-  - `user_id` uuid FK -> users
-  - `chain` string (ethereum | solana)
-  - `address` string
-  - `description` string
-  - `is_default` boolean
-  - `last_fetched_at` timestamp nullable
-  - `created_at` / `updated_at` timestamps
-- [ ] Migration: create `custom_contracts` table
-  - `id` uuid PK
-  - `user_id` uuid FK -> users
-  - `chain` string
-  - `contract_address` string
-  - `symbol` string
-  - `decimals` integer
-  - `created_at` timestamp
-- [ ] Migration: create `payment_intentions` table
-  - `id` uuid PK
-  - `user_id` uuid FK -> users
-  - `wallet_id` uuid FK -> wallets
-  - `description` string
-  - `value` numeric(20,6)
-  - `token_source` string (system | custom)
-  - `token_id` uuid (polymorphic FK)
-  - `expiration_hours` integer default 24
-  - `expires_at` timestamp
-  - `expected_from_address` string nullable
-  - `status` string (PENDING | CONCLUDED | EXPIRED)
-  - `concluded_tx_hash` string nullable
-  - `concluded_from_address` string nullable
-  - `concluded_at` timestamp nullable
-  - `created_at` timestamp
-- [ ] Migration: create `api_tokens` table
-  - `id` uuid PK
-  - `user_id` uuid FK -> users
-  - `token_hash` string (SHA-256)
-  - `label` string
-  - `last_used_at` timestamp nullable
-  - `created_at` timestamp
-- [ ] Seed: insert system tokens (USDT on Ethereum + Solana) into `tokens`
+- [x] Migration: create `users` table
+- [x] Migration: create `tokens` table (system-defined)
+- [x] Migration: create `wallets` table
+- [x] Migration: create `custom_contracts` table
+- [x] Migration: create `payment_intentions` table
+- [x] Migration: create `api_tokens` table
+- [x] Seed: insert system tokens (USDT on Ethereum + Solana) into `tokens`
 
 ## Phase 3: Common Middlewares
 
-- [ ] Create `auth.middleware.ts` — JWT verification, attaches `req.user`
-- [ ] Create `apiKey.middleware.ts` — validates `X-API-Key` header against SHA-256 hashed tokens, loads user rate-limit settings, applies dynamic `express-rate-limit` per request
-- [ ] Create `error.middleware.ts` — centralized error handling, returns structured JSON errors
-- [ ] Create `validation` utilities (UUID validation, chain address format validation)
+- [x] Create `auth.middleware.ts` — JWT verification, attaches `req.user`
+- [x] Create `apiKey.middleware.ts` — validates `X-API-Key` header against SHA-256 hashed tokens, loads user rate-limit settings, applies dynamic `express-rate-limit` per request
+- [x] Create `error.middleware.ts` — centralized error handling, returns structured JSON errors
+- [x] Create `validation` utilities (UUID validation, chain address format validation)
+- [x] Create `encryption.ts` helper (AES encrypt/decrypt for API key storage)
+- [x] Create shared `types.ts` (AuthenticatedUser, AuthenticatedRequest, AppError)
 
 ## Phase 4: Auth Module
 
-- [ ] `POST /auth/register` — email + password, hash with bcrypt, return user
-- [ ] `POST /auth/login` — validate credentials, issue access JWT (15 min) + refresh token (7 days, httpOnly cookie)
-- [ ] `POST /auth/refresh` — rotate refresh token, issue new access JWT
-- [ ] `POST /auth/logout` — clear refresh cookie
+- [x] `POST /auth/register` — email + password, hash with bcrypt, return user
+- [x] `POST /auth/login` — validate credentials, issue access JWT (15 min) + refresh token (7 days, httpOnly cookie)
+- [x] `POST /auth/refresh` — rotate refresh token, issue new access JWT
+- [x] `POST /auth/logout` — clear refresh cookie
 
 ## Phase 5: Configs Module
 
-- [ ] `GET /configs` — return user configs (API key status masked, rate-limit settings)
-- [ ] `PATCH /configs` — update Etherscan/Solscan API keys (encrypt at rest), update rate-limit settings
-- [ ] Implement encryption/decryption helpers for API key storage
+- [x] `GET /configs` — return user configs (API key status masked, rate-limit settings)
+- [x] `PATCH /configs` — update Etherscan/Solscan API keys, update rate-limit settings
+- [x] Implement encryption/decryption helpers for API key storage
 
 ## Phase 6: Wallets Module
 
-- [ ] `GET /wallets` — list all wallets for authenticated user
-- [ ] `POST /wallets` — create wallet with chain validation, enforce single-default in transaction
-- [ ] `PATCH /wallets/:id` — update wallet fields, enforce single-default in transaction
-- [ ] `DELETE /wallets/:id` — block with 409 if any PENDING payment intentions reference this wallet
+- [x] `GET /wallets` — list all wallets for authenticated user
+- [x] `POST /wallets` — create wallet with chain validation, enforce single-default in transaction
+- [x] `PATCH /wallets/:id` — update wallet fields, enforce single-default in transaction
+- [x] `DELETE /wallets/:id` — block with 409 if any PENDING payment intentions reference this wallet
 
 ## Phase 7: Custom Contracts Module
 
-- [ ] `GET /custom-contracts` — list all custom contracts for user
-- [ ] `POST /custom-contracts` — create with chain and contract validation
-- [ ] `DELETE /custom-contracts/:id` — block with 409 if any PENDING payment intentions reference this contract
+- [x] `GET /custom-contracts` — list all custom contracts for user
+- [x] `POST /custom-contracts` — create with chain and contract validation
+- [x] `DELETE /custom-contracts/:id` — block with 409 if any PENDING payment intentions reference this contract
 
 ## Phase 8: Payments Module
 
-- [ ] `POST /payments` — create payment intention
-  - Compute `expires_at` = now + `expiration_hours`
-  - Resolve `token_source`/`token_id` against `tokens` or `custom_contracts`
-  - Validate wallet belongs to user
-- [ ] `GET /payments` — list/filter payment intentions (by status, date range)
-- [ ] `GET /payments/:id` — get single payment with full details
+- [x] `POST /payments` — create payment intention (expires_at, token resolution, wallet validation)
+- [x] `GET /payments` — list/filter payment intentions (by status, date range)
+- [x] `GET /payments/:id` — get single payment with full details
 
 ## Phase 9: API Tokens Module
 
-- [ ] `POST /api-tokens` — generate token (random string), store SHA-256 hash, return raw token once
-- [ ] `GET /api-tokens` — list tokens (never return raw token, mask/hide)
-- [ ] `DELETE /api-tokens/:id` — revoke token
+- [x] `POST /api-tokens` — generate token (SHA-256 hash, raw token shown once)
+- [x] `GET /api-tokens` — list tokens (masked)
+- [x] `DELETE /api-tokens/:id` — revoke token
 
 ## Phase 10: Blockchain Abstraction Layer
 
-- [ ] Define `IChainProvider` interface:
-  - `chainId: string`
-  - `getTransactionsSince(walletAddress: string, since: Date): Promise<TransferEvent[]>`
-  - `TransferEvent` shape: `{ txHash, from, to, rawAmount, contractAddress, timestamp }`
-- [ ] Create `ChainRegistry` — map chain IDs to provider instances
-- [ ] Implement `EthereumProvider` — call Etherscan API (`api.etherscan.io/api?module=account&action=tokentx`)
-- [ ] Implement `SolanaProvider` — call Solscan API for token transfers
-- [ ] Ensure architecture supports adding new chains by creating a new adapter only
+- [x] Define `IChainProvider` interface
+- [x] Create `ChainRegistry`
+- [x] Implement `EthereumProvider` (Etherscan API)
+- [x] Implement `SolanaProvider` (Solscan API)
+- [x] Extensible architecture
 
 ## Phase 11: Payment Poller Job (Core Logic)
 
-- [ ] Create `truncateToPrecision(value: number, precision: number)` utility — pure function
-- [ ] Implement matching logic:
-  - Amount check: truncate both expected and transferred to 2 decimals, compare
-  - Sender check: if `expected_from_address` is set, match exactly; otherwise any sender qualifies
-- [ ] Create pure `matchTransaction` function (testable without cron/mocks)
-- [ ] Implement `PaymentPoller` service:
-  1. Query all wallets with at least one PENDING payment intention
-  2. For each wallet, fetch transactions via chain adapter since `last_fetched_at`
-  3. Resolve token decimals from `tokens` or `custom_contracts`
-  4. Convert raw on-chain amounts to human-readable using decimals
-  5. Evaluate PENDING intentions FIFO by `created_at`
-  6. Apply amount + sender matching rules
-  7. On match: mark CONCLUDED, store tx hash, from address, timestamp
-  8. Each tx hash concludes at most one intention
-  9. After processing, mark EXPIRED any intentions where `expires_at < now()`
-  10. Advance `last_fetched_at` only on successful fetch; retry on failure
-- [ ] Wire up `node-cron` to run every 15 minutes
+- [x] Create `truncateToPrecision` utility
+- [x] Create `convertRawAmount` utility
+- [x] Implement `evaluateMatch` function (pure)
+- [x] Implement `PaymentPoller` service with FIFO, contract matching, tx hash dedup
+- [x] Expired intentions handling
+- [x] Wire up `node-cron` every 15 minutes
+- [x] Error handling — `last_fetched_at` not advanced on failure
 
 ## Phase 12: Reports Module
 
-- [ ] `GET /reports/dashboard` — return aggregated metrics:
-  - Total received this month (sum of CONCLUDED values, current month)
-  - Pending payments count
-  - Expired payments count (current month)
-  - Conversion rate (CONCLUDED / (CONCLUDED + EXPIRED), last 30 days)
-  - Recent activity feed (last 10 concluded/expired events)
-  - Wallets overview (active wallets with pending amounts)
+- [x] `GET /reports/dashboard` — all metrics (total received, pending, expired, conversion rate, activity feed, wallets overview)
 
 ## Phase 13: Public API
 
-- [ ] `POST /api/v1/payments` — create payment intention via API key
-- [ ] `GET /api/v1/payments` — list payment history via API key
-- [ ] `GET /api/v1/payments/:id` — get payment status by ID via API key
-- [ ] All public routes behind `apiKey.middleware` with per-user rate limiting
+- [x] `POST /api/v1/payments` — create via API key
+- [x] `GET /api/v1/payments` — list via API key
+- [x] `GET /api/v1/payments/:id` — get via API key
+- [x] All routes behind `apiKey.middleware` with dynamic rate limiting
 
 ## Phase 14: Frontend Scaffolding
 
-- [ ] Initialize Angular project in `frontend/` with standalone components
-- [ ] Install PrimeNG and required dependencies
-- [ ] Configure environment files (`environment.ts`, `environment.prod.ts`) with `apiBaseUrl`
-- [ ] Create folder structure: `auth/`, `dashboard/`, `payments/`, `wallets/`, `configs/`, `shared/`
-- [ ] Set up shared module with PrimeNG imports, common components
-- [ ] Create HTTP interceptor for JWT attachment + token refresh on 401
-- [ ] Create route guard for authenticated routes
-- [ ] Set up Angular routing with all routes
+- [x] Initialize Angular project in `frontend/` with standalone components
+- [x] Install PrimeNG and required dependencies
+- [x] Configure environment files (`environment.ts`, `environment.prod.ts`) with `apiBaseUrl`
+- [x] Create folder structure: `auth/`, `dashboard/`, `payments/`, `wallets/`, `configs/`, `shared/`
+- [x] Set up `angular.json` with PrimeNG styles
+- [x] Create HTTP interceptor for JWT attachment + token refresh on 401
+- [x] Create route guard for authenticated routes
+- [x] Set up Angular routing with all routes (lazy-loaded)
 
 ## Phase 15: Frontend Auth
 
-- [ ] Login page — email + password form, store access JWT in memory
-- [ ] Register page — email + password + confirmation
-- [ ] Auth interceptor — attach Bearer token, handle 401 → refresh → retry
-- [ ] Route guard — redirect to /login if not authenticated
+- [x] Login page — email + password form, store access JWT in memory
+- [x] Register page — email + password + confirmation
+- [x] Auth interceptor — attach Bearer token, handle 401 → refresh → retry
+- [x] Route guard — redirect to /login if not authenticated
 
 ## Phase 16: Frontend Shared Layout
 
-- [ ] Shell layout component with left navigation menu (PrimeNG Menu or Sidebar)
-- [ ] Menu items in order: Dashboard, Payments, Wallets, Configs
-- [ ] Router outlet for page content
-- [ ] Responsive design (collapsible menu on mobile)
+- [x] Shell layout component with left sidebar navigation
+- [x] Menu items in order: Dashboard, Payments, Wallets, Configs
+- [x] Router outlet for page content
+- [x] Logout button in sidebar footer
 
 ## Phase 17: Frontend Dashboard Page
 
-- [ ] Call `GET /reports/dashboard`
-- [ ] Display metrics using PrimeNG cards:
-  - Total received this month
-  - Pending payments count
-  - Expired payments count
-  - Conversion rate
-- [ ] Recent activity feed (PrimeNG Timeline or list)
-- [ ] Wallets overview (wallets with pending amounts)
+- [x] Call `GET /reports/dashboard`
+- [x] Display metrics in card grid (total received, pending, expired, conversion rate)
+- [x] Recent activity table (last 10 concluded/expired)
+- [x] Wallets overview with pending counts
 
 ## Phase 18: Frontend Wallets Page
 
-- [ ] Wallet list using PrimeNG Table
-- [ ] Create wallet form (PrimeNG Dialog or separate route):
-  - Chain selector (Ethereum / Solana)
-  - Address input
-  - Description input
-  - Is Default toggle
-- [ ] Edit wallet (inline or dialog)
-- [ ] Delete wallet — disable with tooltip when PENDING intentions exist, show 409 error gracefully
-- [ ] Default wallet toggle — only one default per user
+- [x] Wallet list using table
+- [x] Create wallet form (chain selector, address, description, default toggle)
+- [x] Edit wallet (inline form)
+- [x] Delete wallet with 409 error handling
 
 ## Phase 19: Frontend Payments Page
 
-- [ ] Payment list with PrimeNG Table
-- [ ] Filters: status dropdown, date range picker
-- [ ] Create new payment button
-- [ ] Payment creation form:
-  - Description (text input)
-  - Wallet dropdown (default wallet pre-selected)
-  - Token dropdown (system tokens + custom contracts, USDT default)
-  - Value (number input)
-  - Expiration hours (number, default 24)
-  - Expected sender address (optional text input)
-- [ ] Payment detail page:
-  - Status badge (PENDING / CONCLUDED / EXPIRED)
-  - When CONCLUDED: show tx hash, from address, timestamp
-  - When EXPIRED: show expiration info
+- [x] Payment list with status filter
+- [x] Create new payment form (wallet dropdown, token dropdown, value, expiration, expected sender)
+- [x] Payment detail page (status badge, concluded tx info)
 
 ## Phase 20: Frontend Configs Page
 
-- [ ] API Keys section:
-  - Etherscan API key input (masked)
-  - Solscan API key input (masked)
-  - Save button
-- [ ] Rate limiting section:
-  - Toggle enable/disable
-  - Max requests per window (number)
-  - Window duration in minutes (number)
-- [ ] API Tokens section:
-  - List of tokens (masked, show last 4 chars)
-  - Generate new token button — show raw token once in dialog
-  - Revoke token button with confirmation
+- [x] API Keys section (Etherscan, Solscan — masked inputs)
+- [x] Rate limiting section (toggle, max requests, window)
+- [x] API Tokens section (list, generate with one-time raw token reveal, revoke)
 
 ## Phase 21: Frontend Custom Contracts
 
-- [ ] List of custom contracts in a PrimeNG Table
-- [ ] Add contract form:
-  - Chain selector
-  - Contract address
-  - Symbol
-  - Decimals
-- [ ] Delete with same 409 handling as wallets
+- [x] List of custom contracts in a table
+- [x] Add contract form (chain, address, symbol, decimals)
+- [x] Delete with 409 error handling
 
 ## Phase 22: Integration & Validation
 
