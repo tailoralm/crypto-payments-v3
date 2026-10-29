@@ -1,115 +1,215 @@
-import { Component, inject, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { ActivatedRoute, RouterModule } from '@angular/router';
-import { environment } from '../../environments/environment';
-import { CommonModule } from '@angular/common';
-
-interface PaymentDetail {
-  id: string;
-  description: string;
-  value: string;
-  status: string;
-  wallet_address: string;
-  wallet_chain: string;
-  token_symbol: string;
-  expires_at: string;
-  created_at: string;
-  concluded_tx_hash: string | null;
-  concluded_from_address: string | null;
-  concluded_at: string | null;
-  expected_from_address: string | null;
-}
-
+import { Component, inject, OnDestroy } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { FormsModule } from "@angular/forms";
+import { ActivatedRoute, RouterLink } from "@angular/router";
+import { ApiService, ViewState, Payment } from "../shared/api.service";
+import { StatusComponent, CountdownComponent } from "../shared/ui";
 @Component({
-  selector: 'app-payment-detail',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    StatusComponent,
+    CountdownComponent,
+  ],
   template: `
-    <div class="page-container">
-      <a routerLink="/payments" class="back-link">← Back to Payments</a>
-
-      @if (loading()) {
-        <div class="loading">Loading...</div>
-      } @else if (error()) {
-        <div class="error-banner">{{ error() }}</div>
-      } @else {
-        @let p = payment()!;
-        <h1>{{ p.description }}</h1>
-        <div class="detail-grid">
-          <div class="detail-row">
-            <span class="label">Status</span>
-            <span class="badge" [class.pending]="p.status === 'PENDING'" [class.concluded]="p.status === 'CONCLUDED'" [class.expired]="p.status === 'EXPIRED'">{{ p.status }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="label">Value</span>
-            <span>{{ p.value }} {{ p.token_symbol }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="label">Wallet</span>
-            <span class="mono">{{ p.wallet_address }} ({{ p.wallet_chain }})</span>
-          </div>
-          <div class="detail-row">
-            <span class="label">Created</span>
-            <span>{{ p.created_at | date:'medium' }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="label">Expires</span>
-            <span>{{ p.expires_at | date:'medium' }}</span>
-          </div>
-          @if (p.expected_from_address) {
-            <div class="detail-row">
-              <span class="label">Expected Sender</span>
-              <span class="mono">{{ p.expected_from_address }}</span>
-            </div>
-          }
-          @if (p.status === 'CONCLUDED') {
-            <div class="detail-row">
-              <span class="label">TX Hash</span>
-              <span class="mono">{{ p.concluded_tx_hash }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">From</span>
-              <span class="mono">{{ p.concluded_from_address }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Concluded At</span>
-              <span>{{ p.concluded_at | date:'medium' }}</span>
-            </div>
-          }
+    <a class="back-link" routerLink="/payments">← Payment requests</a>
+    @if (error()) {
+      <div class="alert error" role="alert">{{ error() }}</div>
+    }
+    @if (notice()) {
+      <div class="alert good" role="status">{{ notice() }}</div>
+    }
+    @if (p) {
+      <div class="page-heading">
+        <div>
+          <span class="eyebrow mono">{{ p.reference }}</span>
+          <h1>{{ p.description }}</h1>
+          <p class="muted">
+            Created {{ p.created_at | date: "medium" : "UTC" }} UTC
+          </p>
         </div>
-      }
-    </div>
+        <app-status [value]="p.status" />
+      </div>
+      <div class="detail-layout">
+        <section class="panel bill-card">
+          <div class="bill-top">
+            <span class="eyebrow">PAYMENT REQUEST</span
+            ><span class="subtle-tag">{{
+              p.snapshot.chain === "bsc"
+                ? "BNB Smart Chain"
+                : (p.snapshot.chain | titlecase)
+            }}</span>
+          </div>
+          <h2 class="bill-amount">{{ p.value }} <span>USDT</span></h2>
+          <p class="muted">{{ p.snapshot.asset_label }}</p>
+          @if (p.qr) {
+            <img class="payment-qr" [src]="p.qr" alt="Wallet payment QR code" />
+            <p class="helper">Scan with a compatible wallet</p>
+          } @else {
+            <div class="alert">
+              This request is no longer payable. Do not send additional funds.
+            </div>
+          }
+          <dl class="bill-fields">
+            <dt>Receiving address</dt>
+            <dd class="mono break">{{ p.snapshot.address }}</dd>
+            <dt>Token contract / mint</dt>
+            <dd class="mono break">{{ p.snapshot.asset_address }}</dd>
+            <dt>Deadline (UTC)</dt>
+            <dd>{{ p.expires_at | date: "medium" : "UTC" }}</dd>
+            @if (p.expected_from_address) {
+              <dt>Required sender</dt>
+              <dd class="mono break">{{ p.expected_from_address }}</dd>
+            }
+            @if (p.concluded_tx_hash) {
+              <dt>Matched transaction</dt>
+              <dd class="mono break">
+                <a [href]="explorer()" target="_blank" rel="noopener noreferrer"
+                  >{{ p.concluded_tx_hash }} ↗</a
+                >
+              </dd>
+            }
+            @if (p.paid_at) {
+              <dt>Paid at (UTC)</dt>
+              <dd>{{ p.paid_at | date: "medium" : "UTC" }}</dd>
+            }
+          </dl>
+          <p class="helper">
+            Send the exact token and amount on this network. Keep native network
+            coin available for transaction fees.
+          </p>
+        </section>
+        <aside>
+          <section class="panel form-panel">
+            <h2>Share & manage</h2>
+            <button
+              class="secondary wide"
+              [disabled]="busy()"
+              (click)="download()"
+            >
+              ↓ Download billing PDF
+            </button>
+            @if (p.public_url) {
+              <a
+                class="secondary wide"
+                [href]="p.public_url"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Open public billing page ↗</a
+              ><button class="text-button wide" (click)="copy()">
+                Copy public link
+              </button>
+            } @else {
+              <p class="helper">
+                Local-only billing. Configure a public URL in Settings to share
+                a live page.
+              </p>
+            }
+            @if (p.smtp_enabled) {
+              <form (ngSubmit)="send()">
+                <label for="recipient">Send PDF by email</label
+                ><input
+                  id="recipient"
+                  name="recipient"
+                  type="email"
+                  [(ngModel)]="recipient"
+                  placeholder="customer@example.com"
+                  required
+                /><button class="primary wide" [disabled]="busy()">
+                  Send payment request
+                </button>
+              </form>
+            } @else {
+              <p class="helper">
+                Configure SMTP in <a routerLink="/settings">Settings</a> to
+                email this PDF.
+              </p>
+            }
+            @if (p.status === "IN_PROGRESS") {
+              <hr />
+              <span class="eyebrow">TIME REMAINING</span>
+              <p><app-countdown [expires]="p.expires_at" /></p>
+              <button
+                class="danger wide"
+                [disabled]="busy()"
+                (click)="cancel()"
+              >
+                Cancel payment request
+              </button>
+            }
+          </section>
+          <p class="helper">
+            Status refreshes every 30 seconds. PDF status is a snapshot at
+            download time.
+          </p>
+        </aside>
+      </div>
+    }
   `,
-  styles: [`
-    .back-link { display: inline-block; margin-bottom: 1rem; color: var(--primary-color); text-decoration: none; }
-    h1 { margin: 0 0 1.5rem; }
-    .loading { padding: 2rem; text-align: center; }
-    .error-banner { background: #fce4e4; color: #c0392b; padding: 0.75rem; border-radius: 6px; }
-    .detail-grid { background: var(--surface-card); padding: 1.25rem; border-radius: 8px; }
-    .detail-row { display: flex; padding: 0.75rem 0; border-bottom: 1px solid var(--surface-border); }
-    .detail-row:last-child { border-bottom: none; }
-    .label { width: 160px; font-weight: 600; color: var(--text-color-secondary); font-size: 0.9rem; }
-    .mono { font-family: monospace; font-size: 0.85rem; word-break: break-all; }
-    .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
-    .badge.pending { background: #fff3e0; color: #e65100; }
-    .badge.concluded { background: #e8f5e9; color: #2e7d32; }
-    .badge.expired { background: #fce4e4; color: #c0392b; }
-  `]
 })
-export class PaymentDetailComponent {
-  private http = inject(HttpClient);
-  private route = inject(ActivatedRoute);
-  private api = environment.apiBaseUrl;
-
-  payment = signal<PaymentDetail | null>(null);
-  loading = signal(true);
-  error = signal('');
-
+export class PaymentDetailComponent extends ViewState implements OnDestroy {
+  api = inject(ApiService);
+  route = inject(ActivatedRoute);
+  p: Payment | null = null;
+  recipient = "";
+  id = this.route.snapshot.paramMap.get("id")!;
+  timer = setInterval(() => this.load(), 30000);
   constructor() {
-    const id = this.route.snapshot.paramMap.get('id')!;
-    this.http.get<PaymentDetail>(`${this.api}/payments/${id}`).subscribe({
-      next: (p) => { this.payment.set(p); this.loading.set(false); },
-      error: () => { this.error.set('Failed to load payment'); this.loading.set(false); },
+    super();
+    this.load();
+  }
+  ngOnDestroy() {
+    clearInterval(this.timer);
+  }
+  load() {
+    void this.run(
+      async () =>
+        (this.p = await this.api.request("/payments/" + this.id + "/billing")),
+    );
+  }
+  download() {
+    void this.run(() =>
+      this.api.download("/payments/" + this.id + "/pdf", this.p!.reference),
+    );
+  }
+  copy() {
+    void this.run(async () => {
+      await navigator.clipboard.writeText(this.p!.public_url!);
+      this.notice.set("Public link copied.");
     });
+  }
+  cancel() {
+    if (
+      !confirm(
+        "Cancel this request permanently? This does not reverse any transfer.",
+      )
+    )
+      return;
+    void this.run(async () => {
+      await this.api.request("/payments/" + this.id + "/cancel", "POST", {});
+      this.p = await this.api.request("/payments/" + this.id + "/billing");
+    });
+  }
+  send() {
+    void this.run(async () => {
+      const r = await this.api.request(
+        "/payments/" + this.id + "/email",
+        "POST",
+        { to: this.recipient },
+      );
+      this.notice.set(r.message);
+    });
+  }
+  explorer() {
+    const c = this.p!.snapshot.chain;
+    return (
+      (c === "solana"
+        ? "https://solscan.io/tx/"
+        : c === "bsc"
+          ? "https://bscscan.com/tx/"
+          : "https://etherscan.io/tx/") + this.p!.concluded_tx_hash
+    );
   }
 }

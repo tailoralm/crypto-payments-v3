@@ -3,3 +3,7 @@ dist/
 .env
 *.log
 .DS_Store
+.angular/
+test-results/
+playwright-report/
+artifacts/

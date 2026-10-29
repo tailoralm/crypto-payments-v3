@@ -1,34 +1,70 @@
-import { Routes } from '@angular/router';
-import { authGuard } from './shared/auth.guard';
-import { LayoutComponent } from './shared/layout.component';
-
-const authRoutes: Routes = [
+import { inject } from "@angular/core";
+import { CanActivateFn, Router, Routes } from "@angular/router";
+import { ApiService } from "./shared/api.service";
+import { LayoutComponent } from "./shared/layout.component";
+const ownerGuard: CanActivateFn = () =>
+  inject(ApiService).authenticated() ||
+  inject(Router).createUrlTree(["/login"]);
+export const routes: Routes = [
   {
-    path: 'login',
-    loadComponent: () => import('./auth/login.component').then(m => m.LoginComponent),
+    path: "login",
+    loadComponent: () =>
+      import("./auth/login.component").then((m) => m.LoginComponent),
+  },
+  { path: "register", redirectTo: "login" },
+  {
+    path: "bill/:token",
+    loadComponent: () =>
+      import("./payments/public-billing.component").then(
+        (m) => m.PublicBillingComponent,
+      ),
   },
   {
-    path: 'register',
-    loadComponent: () => import('./auth/register.component').then(m => m.RegisterComponent),
-  },
-];
-
-const appRoutes: Routes = [
-  {
-    path: '',
+    path: "",
     component: LayoutComponent,
-    canActivate: [authGuard],
+    canActivate: [ownerGuard],
     children: [
-      { path: 'dashboard', loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent) },
-      { path: 'payments', loadComponent: () => import('./payments/payments.component').then(m => m.PaymentsComponent) },
-      { path: 'payments/new', loadComponent: () => import('./payments/payment-form.component').then(m => m.PaymentFormComponent) },
-      { path: 'payments/:id', loadComponent: () => import('./payments/payment-detail.component').then(m => m.PaymentDetailComponent) },
-      { path: 'wallets', loadComponent: () => import('./wallets/wallets.component').then(m => m.WalletsComponent) },
-      { path: 'configs', loadComponent: () => import('./configs/configs.component').then(m => m.ConfigsComponent) },
-      { path: 'custom-contracts', loadComponent: () => import('./configs/custom-contracts.component').then(m => m.CustomContractsComponent) },
-      { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
+      {
+        path: "dashboard",
+        loadComponent: () =>
+          import("./dashboard/dashboard.component").then(
+            (m) => m.DashboardComponent,
+          ),
+      },
+      {
+        path: "payments/new",
+        loadComponent: () =>
+          import("./payments/payment-form.component").then(
+            (m) => m.PaymentFormComponent,
+          ),
+      },
+      {
+        path: "payments/:id",
+        loadComponent: () =>
+          import("./payments/payment-detail.component").then(
+            (m) => m.PaymentDetailComponent,
+          ),
+      },
+      {
+        path: "payments",
+        loadComponent: () =>
+          import("./payments/payments.component").then(
+            (m) => m.PaymentsComponent,
+          ),
+      },
+      {
+        path: "wallets",
+        loadComponent: () =>
+          import("./wallets/wallets.component").then((m) => m.WalletsComponent),
+      },
+      {
+        path: "settings",
+        loadComponent: () =>
+          import("./configs/configs.component").then((m) => m.ConfigsComponent),
+      },
+      { path: "configs", redirectTo: "settings" },
+      { path: "", redirectTo: "dashboard", pathMatch: "full" },
     ],
   },
+  { path: "**", redirectTo: "dashboard" },
 ];
-
-export const routes: Routes = [...authRoutes, ...appRoutes];

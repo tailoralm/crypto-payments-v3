@@ -1,155 +1,43 @@
-# Data Model — CryptoPay Manager
+# Data model and upgrade behavior
 
-## Entity Relationship
+PostgreSQL 16 with Knex migrations. The [initial schema](../backend/src/db/migrations/20260728_000001_initial_schema.ts) remains intact; the [self-hosted migration](../backend/src/db/migrations/20261028_000002_self_hosted.ts) evolves it transactionally. Startup applies pending migrations before accepting requests.
 
-```
-users (1) ──< wallets (N)
-users (1) ──< custom_contracts (N)
-users (1) ──< payment_intentions (N)
-users (1) ──< api_tokens (N)
-wallets (1) ──< payment_intentions (N)
-tokens (system, no FK relation to users)
-custom_contracts (polymorphic reference via payment_intentions.token_source + token_id)
-tokens (polymorphic reference via payment_intentions.token_source + token_id)
-```
+## Records
 
----
+| Table | Purpose |
+| --- | --- |
+| `users` | Owner identity/password hash; legacy per-user config columns retained for preservation |
+| `installation` | One row (ID 1), JSONB settings, encrypted provider/SMTP secrets and update timestamp |
+| `wallets` | Owner, chain/address, normalized address, description/default, archival, scan attempt/success/checkpoint/error |
+| `tokens` | Curated catalog; idempotent seed finds by chain/contract rather than relying on a missing conflict constraint |
+| `custom_contracts` | Preserved legacy metadata; new custom creation is disabled |
+| `payment_intentions` | Owner/wallet, reference, random sharing token, requested amount, immutable JSONB identity snapshot, lifecycle and matched evidence |
+| `transfers` | Unique `(chain, tx, event)` evidence; unique nullable payment assignment |
+| `sessions` | Owner FK, opaque refresh-token hash, session UUID and expiration; rotation/logout deletes the old session |
+| `api_tokens` | SHA-256 integration-token hashes, labels, last use; raw secrets never persisted |
+| `api_buckets` | Shared atomic counter/reset time for integration rate limits |
+| `mail_deliveries` | Payment, private recipient, ACCEPTED/FAILED outcome and attempt timestamp |
 
-## Table: `users`
+## Exact values and attribution
 
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| id | uuid | PK, default uuid_generate_v4() | |
-| email | varchar(255) | UNIQUE, NOT NULL | |
-| password_hash | varchar(255) | NOT NULL | bcrypt hash |
-| etherscan_api_key | text | nullable | AES-256 encrypted at rest |
-| solscan_api_key | text | nullable | AES-256 encrypted at rest |
-| rate_limit_enabled | boolean | NOT NULL, default false | |
-| rate_limit_max_requests | integer | nullable | |
-| rate_limit_window_minutes | integer | nullable | |
-| created_at | timestamptz | NOT NULL, default now() | |
-| updated_at | timestamptz | NOT NULL, default now() | |
+Payment `value` uses `numeric(38,18)`; API values are plain decimal strings. The snapshot records chain, receiving address, contract/mint, label, decimals, display amount, and atomic amount string. Conversion uses BigInt, never floating point. Description, sender and expiry remain immutable payment columns because no update API permits changes.
 
----
+Transfers store normalized evidence including chain timestamp, raw amount and provider execution evidence. Assignment and conditional status changes are transactional with row locking. EVM events use receipt log indices. Solana events use instruction indices when supplied; a single incoming transfer can use the transaction's single-event identity, while ambiguous multi-transfer responses are rejected. Conflicting identity representations and previously concluded legacy hashes are protected from reuse.
 
-## Table: `tokens` (system-defined, pre-seeded)
+New requests are serialized through the installation row to reject overlapping matching criteria. Wallet registration uses the same guard to reject duplicate normalized chain/address identities. Historical duplicate wallets are preserved, not silently merged. Wallet description/default updates do not change receiving identity.
 
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| id | uuid | PK | |
-| chain | varchar(50) | NOT NULL | `ethereum` or `solana` |
-| symbol | varchar(50) | NOT NULL | e.g. `USDT` |
-| contract_address | varchar(255) | NOT NULL | Official contract per chain |
-| decimals | integer | NOT NULL | e.g. 6 (USDT) or 18 (ETH) |
-| is_system_default | boolean | NOT NULL, default true | |
+Wallet/payment foreign keys restrict deletion of referenced history. Archive flags prevent new requests while keeping existing ones monitorable. Transfers and mail records also restrict destructive payment deletion; no payment-deletion API exists.
 
-### Seed Data
+## Lifecycle and timestamps
 
-| Chain | Symbol | Contract Address | Decimals |
-|-------|--------|-----------------|----------|
-| ethereum | USDT | `0xdAC17F958D2ee523a2206206994597C13D831ec7` | 6 |
-| solana | USDT | `Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB` | 6 |
+Status is database constrained to IN_PROGRESS, SUCCESS, EXPIRED, CANCELED. Matching uses on-chain time in `[created_at, expires_at)`; terminal states never reopen. `paid_at` is chain time, `detected_at` is local reconciliation time, `canceled_at` marks cancellation, and `updated_at` marks lifecycle change. Legacy `concluded_*` columns remain for compatibility/evidence.
 
----
+Scan checkpoints mark completed bounded queries. The worker replays the complete active intention window to accommodate indexing lag and persists only successful scan coverage. It uses a PostgreSQL advisory lock plus a process guard; event assignment is also transactionally guarded.
 
-## Table: `wallets`
+## Upgrade safety
 
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| id | uuid | PK | |
-| user_id | uuid | FK -> users(id), NOT NULL | |
-| chain | varchar(50) | NOT NULL | `ethereum` or `solana` |
-| address | varchar(255) | NOT NULL | Validated per chain format |
-| description | text | nullable | |
-| is_default | boolean | NOT NULL, default false | Only one true per user |
-| last_fetched_at | timestamptz | nullable | Updated after successful blockchain poll |
-| created_at | timestamptz | NOT NULL, default now() | |
-| updated_at | timestamptz | NOT NULL, default now() | |
+Before mutation, upgrades refuse more than one existing user or active custom-asset requests. Those cases need an explicit operator resolution/ownership mapping. Historical custom records remain readable and outside USDT totals.
 
-### Indexes
-- `idx_wallets_user_id` on `user_id`
-- `idx_wallets_user_default` on `(user_id)` where `is_default = true` (partial unique)
+Backfill snapshots from existing wallet/token identities. Missing identity or invalid values abort migration rather than inventing data. Map PENDING → IN_PROGRESS and CONCLUDED → SUCCESS, retaining IDs, amounts and transaction evidence. Preserve legacy conclusion time as detection time; leave unknown chain paid time null and disclose it in reports. Existing provider ciphertext is copied to installation settings with the same encryption key.
 
-### Deletion Rule
-Cannot delete if any `payment_intentions` with status `PENDING` reference this wallet. Return HTTP 409.
-
----
-
-## Table: `custom_contracts`
-
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| id | uuid | PK | |
-| user_id | uuid | FK -> users(id), NOT NULL | |
-| chain | varchar(50) | NOT NULL | `ethereum` or `solana` |
-| contract_address | varchar(255) | NOT NULL | |
-| symbol | varchar(50) | NOT NULL | User-provided label |
-| decimals | integer | NOT NULL | Required for correct raw amount parsing |
-| created_at | timestamptz | NOT NULL, default now() | |
-
-### Indexes
-- `idx_custom_contracts_user_id` on `user_id`
-
-### Deletion Rule
-Cannot delete if any `payment_intentions` with status `PENDING` reference this contract. Return HTTP 409.
-
----
-
-## Table: `payment_intentions`
-
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| id | uuid | PK | |
-| user_id | uuid | FK -> users(id), NOT NULL | |
-| wallet_id | uuid | FK -> wallets(id), NOT NULL | |
-| description | text | NOT NULL | |
-| value | numeric(20,6) | NOT NULL | Stored as decimal, never float |
-| token_source | varchar(20) | NOT NULL | `system` or `custom` |
-| token_id | uuid | NOT NULL | FK to `tokens` or `custom_contracts` |
-| expiration_hours | integer | NOT NULL, default 24 | |
-| expires_at | timestamptz | NOT NULL | Computed: created_at + expiration_hours |
-| expected_from_address | varchar(255) | nullable | Optional sender filter |
-| status | varchar(20) | NOT NULL, default 'PENDING' | `PENDING`, `CONCLUDED`, `EXPIRED` |
-| concluded_tx_hash | varchar(255) | nullable | Set once on match, immutable |
-| concluded_from_address | varchar(255) | nullable | Set once on match, immutable |
-| concluded_at | timestamptz | nullable | Set once on match, immutable |
-| created_at | timestamptz | NOT NULL, default now() | |
-
-### Indexes
-- `idx_payment_intentions_user_id` on `user_id`
-- `idx_payment_intentions_wallet_id` on `wallet_id`
-- `idx_payment_intentions_status` on `status`
-- `idx_payment_intentions_user_status` on `(user_id, status)`
-
-### Status Transitions
-```
-PENDING ──(match found)──> CONCLUDED
-PENDING ──(expired)──────> EXPIRED
-```
-No other transitions allowed. Concluded fields are immutable once set.
-
----
-
-## Table: `api_tokens`
-
-| Column | Type | Constraints | Notes |
-|--------|------|-------------|-------|
-| id | uuid | PK | |
-| user_id | uuid | FK -> users(id), NOT NULL | |
-| token_hash | varchar(255) | NOT NULL | SHA-256 hash of raw token |
-| label | varchar(255) | nullable | User-provided description |
-| last_used_at | timestamptz | nullable | Updated on public API usage |
-| created_at | timestamptz | NOT NULL, default now() | |
-
-### Indexes
-- `idx_api_tokens_user_id` on `user_id`
-- `idx_api_tokens_hash` on `token_hash` (for fast lookup)
-
----
-
-## Multi-Tenancy Rules
-
-- Every data table (`wallets`, `payment_intentions`, `api_tokens`, `custom_contracts`) includes `user_id`
-- Every query filters by the authenticated user's `user_id`
-- No cross-user data access is ever permitted — including via the public API
-- The public API resolves user from the API token and scopes all queries to that user
+The migration is transactional and its down function refuses destructive reversal. Restore the pre-upgrade database plus original secrets/configuration to roll back. [Upgrade tests](../backend/test/upgrade.ts) exercise history preservation and rejection safeguards. Back up before upgrading; never rewrite the initial migration to simulate an upgrade.

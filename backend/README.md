@@ -1,56 +1,16 @@
-# CryptoPay Manager — Backend
+# CryptoPay backend
 
-Node.js + Express + TypeScript API for CryptoPay Manager. Handles authentication, wallets, payment intentions, blockchain polling, and the public API.
+Express/TypeScript + PostgreSQL/Knex. `src/app.ts` provides HTTP/authentication; `src/core/` contains domain validation, settings, payment services, provider adapters, polling, billing and reports. `src/server.ts` validates secrets, applies migrations and starts the server/worker.
 
-## Stack
+Use Node.js 22 and configure database/installation secrets as described in [self-hosting](../docs/self-hosting.md).
 
-- Node.js + Express + TypeScript
-- Knex.js (query builder + migrations)
-- PostgreSQL
-- JWT auth (access + refresh)
-- node-cron (15-minute blockchain polling job)
-- Etherscan API + Solscan API integrations
-
-## Structure (planned)
-
-```
-backend/
-├── src/
-│   ├── modules/
-│   │   ├── auth/
-│   │   ├── users/
-│   │   ├── wallets/
-│   │   ├── payments/
-│   │   ├── api-tokens/
-│   │   ├── reports/
-│   │   └── blockchain/
-│   ├── jobs/
-│   │   └── payment-poller.job.ts
-│   ├── db/
-│   │   ├── knexfile.ts
-│   │   └── migrations/
-│   ├── common/
-│   │   ├── middlewares/
-│   │   └── validators/
-│   └── server.ts
-├── docs/
-│   ├── project-overview.md
-│   └── agent.md
-├── Dockerfile
-└── package.json
-```
-
-## Getting Started
-
-This app has not been scaffolded yet. See `docs/agent.md` for full development instructions and `docs/project-overview.md` for architecture, data model, and business rules.
-
-## Local Development
-
-```bash
-npm install
+```sh
+npm ci
+npm run build
+npm test
 npm run dev
 ```
 
-## Docker
+`npm start` runs the compiled production server. Migrations run automatically; `npm run migrate` and `npm run seed` are available for development. Integration tests require a disposable database named `cryptopay_test`; they clear its application data. See [validation](../docs/acceptance.md).
 
-Runs as part of the root `docker-compose.yml`, alongside PostgreSQL.
+Read the [specification](../docs/product-specification.md), [API](../docs/api-surface.md), [model](../docs/data-model.md), and [provider limits](../docs/providers.md) before changes. Live provider validation is separate from deterministic tests.

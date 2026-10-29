@@ -1,122 +1,142 @@
-import { Component, inject, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { FormsModule } from '@angular/forms';
-import { Router, RouterModule } from '@angular/router';
-import { environment } from '../../environments/environment';
-import { CommonModule } from '@angular/common';
-
-interface Wallet { id: string; address: string; chain: string; is_default: boolean; }
-interface Token { id: string; symbol: string; chain: string; }
-
+import { Component, inject } from "@angular/core";
+import { FormsModule } from "@angular/forms";
+import { Router, RouterLink } from "@angular/router";
+import { ApiService, ViewState, Wallet } from "../shared/api.service";
 @Component({
-  selector: 'app-payment-form',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
-  template: `
-    <div class="page-container">
-      <h1>New Payment Intention</h1>
-
-      @if (error()) {
-        <div class="error-banner">{{ error() }}</div>
-      }
-
-      <div class="form-card">
-        <div class="field">
-          <label>Description</label>
-          <input [(ngModel)]="description" placeholder="Invoice #123" />
-        </div>
-        <div class="field">
-          <label>Wallet</label>
-          <select [(ngModel)]="walletId">
-            @for (w of wallets(); track w.id) {
-              <option [value]="w.id">{{ w.address | slice:0:10 }}... ({{ w.chain }}{{ w.is_default ? ', default' : '' }})</option>
-            }
-          </select>
-        </div>
-        <div class="field">
-          <label>Token</label>
-          <select [(ngModel)]="tokenId">
-            @for (t of tokens(); track t.id) {
-              <option [value]="t.id">{{ t.symbol }} ({{ t.chain }})</option>
-            }
-          </select>
-        </div>
-        <div class="field">
-          <label>Value (USDT)</label>
-          <input type="number" step="0.01" [(ngModel)]="value" />
-        </div>
-        <div class="field">
-          <label>Expiration (hours)</label>
-          <input type="number" [(ngModel)]="expirationHours" />
-        </div>
-        <div class="field">
-          <label>Expected Sender Address (optional)</label>
-          <input [(ngModel)]="expectedFrom" placeholder="Leave empty for any sender" />
-        </div>
-        <div class="form-actions">
-          <button class="btn-primary" (click)="submit()" [disabled]="saving()">{{ saving() ? 'Creating...' : 'Create Payment' }}</button>
-          <a routerLink="/payments" class="btn-secondary">Cancel</a>
-        </div>
+  imports: [FormsModule, RouterLink],
+  template: ` <a class="back-link" routerLink="/payments">← Payment requests</a>
+    <div class="page-heading">
+      <div>
+        <span class="eyebrow">NEW REQUEST</span>
+        <h1>Request a payment</h1>
+        <p class="muted">Funds go directly to your receiving wallet.</p>
       </div>
     </div>
-  `,
-  styles: [`
-    h1 { margin: 0 0 1rem; }
-    .form-card { background: var(--surface-card); padding: 1.25rem; border-radius: 8px; max-width: 500px; }
-    .field { margin-bottom: 1rem; }
-    .field label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; }
-    .field input, .field select { width: 100%; padding: 0.5rem; border: 1px solid var(--surface-border); border-radius: 6px; }
-    .form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
-    .btn-primary { padding: 0.5rem 1rem; background: var(--primary-color); color: var(--primary-color-text); border: none; border-radius: 6px; cursor: pointer; }
-    .btn-primary:disabled { opacity: 0.6; }
-    .btn-secondary { padding: 0.5rem 1rem; background: transparent; border: 1px solid var(--surface-border); border-radius: 6px; cursor: pointer; text-decoration: none; color: inherit; }
-    .error-banner { background: #fce4e4; color: #c0392b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
-  `]
+    <div class="form-layout">
+      <section class="panel form-panel">
+        @if (error()) {
+          <div class="alert error" role="alert">{{ error() }}</div>
+        }
+        <form (ngSubmit)="submit()">
+          <label for="description">What is this payment for?</label
+          ><input
+            id="description"
+            name="description"
+            [(ngModel)]="description"
+            placeholder="e.g. Design services · October"
+            maxlength="500"
+            required
+          />
+          <label for="wallet">Receiving wallet</label
+          ><select id="wallet" name="wallet" [(ngModel)]="walletId" required>
+            <option value="" disabled>Select a wallet</option>
+            @for (w of wallets; track w.id) {
+              <option [value]="w.id">
+                {{ w.description }} · {{ w.chain }}
+              </option>
+            }
+          </select>
+          @if (!wallets.length) {
+            <p class="helper">
+              Add a <a routerLink="/wallets">receiving wallet</a> and configure
+              its explorer in Settings first.
+            </p>
+          }
+          <div class="form-row">
+            <div>
+              <label for="amount">Exact amount (USDT)</label
+              ><input
+                id="amount"
+                name="amount"
+                type="text"
+                inputmode="decimal"
+                [(ngModel)]="amount"
+                placeholder="0.00"
+                pattern="[0-9]+([.][0-9]+)?"
+                required
+              /><small>Must arrive as one exact transfer.</small>
+            </div>
+            <div>
+              <label for="expiry">Expires after (hours)</label
+              ><input
+                id="expiry"
+                name="expiry"
+                type="number"
+                [(ngModel)]="hours"
+                min="1"
+                max="8760"
+                required
+              />
+            </div>
+          </div>
+          <label for="sender"
+            >Expected sender <span class="optional">optional</span></label
+          ><input
+            id="sender"
+            name="sender"
+            [(ngModel)]="sender"
+            placeholder="Leave empty to accept any sender"
+            autocomplete="off"
+          />
+          <div class="form-actions">
+            <button class="primary" [disabled]="busy() || !wallets.length">
+              {{ busy() ? "Creating…" : "Create payment request →" }}</button
+            ><a routerLink="/payments" class="secondary">Cancel</a>
+          </div>
+        </form>
+      </section>
+      <aside class="form-aside">
+        <h2>A request, ready to share.</h2>
+        <p>
+          Every request gets a printable PDF and a QR code for compatible
+          wallets.
+        </p>
+        <ol>
+          <li>Choose a wallet on the correct network.</li>
+          <li>Set the exact amount and deadline.</li>
+          <li>Share the PDF or your public billing link.</li>
+        </ol>
+        <div class="alert">
+          A request expires permanently. Transfers discovered after final expiry
+          will not reopen it.
+        </div>
+        <p class="muted">
+          Monitoring requires an enabled explorer and your API credentials.
+          Provider subscriptions may apply.
+        </p>
+      </aside>
+    </div>`,
 })
-export class PaymentFormComponent {
-  private http = inject(HttpClient);
-  private router = inject(Router);
-  private api = environment.apiBaseUrl;
-
-  wallets = signal<Wallet[]>([]);
-  tokens = signal<Token[]>([]);
-  saving = signal(false);
-  error = signal('');
-
-  walletId = '';
-  tokenId = '';
-  description = '';
-  value = 0;
-  expirationHours = 24;
-  expectedFrom = '';
-
+export class PaymentFormComponent extends ViewState {
+  api = inject(ApiService);
+  router = inject(Router);
+  wallets: Wallet[] = [];
+  walletId = "";
+  description = "";
+  amount = "";
+  hours = 24;
+  sender = "";
   constructor() {
-    this.http.get<Wallet[]>(`${this.api}/wallets`).subscribe((w) => {
-      this.wallets.set(w);
-      const def = w.find((x) => x.is_default);
-      if (def) this.walletId = def.id;
-    });
-    this.http.get<Token[]>(`${this.api}/tokens`).subscribe((t) => {
-      this.tokens.set(t);
-      if (t.length > 0) this.tokenId = t[0].id;
+    super();
+    void this.run(async () => {
+      this.wallets = (await this.api.request<Wallet[]>("/wallets")).filter(
+        (w) => !w.archived_at,
+      );
+      this.walletId =
+        (this.wallets.find((w) => w.is_default) || this.wallets[0])?.id || "";
     });
   }
-
   submit() {
-    this.saving.set(true);
-    this.error.set('');
-    this.http.post(`${this.api}/payments`, {
-      wallet_id: this.walletId,
-      description: this.description,
-      value: this.value,
-      token_source: 'system',
-      token_id: this.tokenId,
-      expiration_hours: this.expirationHours,
-      expected_from_address: this.expectedFrom || null,
-    }).subscribe({
-      next: () => this.router.navigate(['/payments']),
-      error: () => { this.error.set('Failed to create payment'); this.saving.set(false); },
-      complete: () => this.saving.set(false),
+    void this.run(async () => {
+      const p = await this.api.request("/payments", "POST", {
+        wallet_id: this.walletId,
+        description: this.description,
+        value: this.amount,
+        expiration_hours: this.hours,
+        expected_from_address: this.sender || null,
+      });
+      await this.router.navigate(["/payments", p.id]);
     });
   }
 }

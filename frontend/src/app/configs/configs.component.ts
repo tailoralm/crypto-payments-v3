@@ -1,207 +1,430 @@
-import { Component, inject, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
-import { environment } from '../../environments/environment';
-import { CommonModule } from '@angular/common';
-
-interface Configs {
-  etherscan_api_key: string | null;
-  solscan_api_key: string | null;
-  rate_limit_enabled: boolean;
-  rate_limit_max_requests: number | null;
-  rate_limit_window_minutes: number | null;
-}
-
-interface ApiToken {
-  id: string;
-  label: string | null;
-  last_used_at: string | null;
-  created_at: string;
-}
-
+import { Component, inject } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { FormsModule } from "@angular/forms";
+import { ApiService, ViewState } from "../shared/api.service";
 @Component({
-  selector: 'app-configs',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
-  template: `
-    <div class="page-container">
-      <h1>Configs</h1>
-
-      @if (error()) {
-        <div class="error-banner">{{ error() }}</div>
-      }
-
-      <div class="section">
-        <h2>API Keys</h2>
-        <div class="form-card">
-          <div class="field">
-            <label>Etherscan API Key</label>
-            <input [(ngModel)]="etherscanKey" placeholder="Encrypted at rest" />
-          </div>
-          <div class="field">
-            <label>Solscan API Key</label>
-            <input [(ngModel)]="solscanKey" placeholder="Encrypted at rest" />
-          </div>
-          <button class="btn-primary" (click)="saveKeys()" [disabled]="savingKeys()">{{ savingKeys() ? 'Saving...' : 'Save API Keys' }}</button>
-        </div>
+  imports: [CommonModule, FormsModule],
+  template: ` <div class="page-heading">
+      <div>
+        <span class="eyebrow">INSTALLATION PREFERENCES</span>
+        <h1>Settings</h1>
+        <p class="muted">
+          Connect your explorers and make this workspace yours.
+        </p>
       </div>
-
-      <div class="section">
-        <h2>Rate Limiting</h2>
-        <div class="form-card">
-          <div class="field-checkbox">
-            <label><input type="checkbox" [(ngModel)]="rateLimitEnabled" /> Enable rate limiting</label>
+      <span class="subtle-tag">Single-owner installation</span>
+    </div>
+    @if (error()) {
+      <div class="alert error" role="alert">{{ error() }}</div>
+    }
+    @if (notice()) {
+      <div class="alert good" role="status">{{ notice() }}</div>
+    }
+    @if (s) {
+      <form (ngSubmit)="save()">
+        <section class="panel settings-section">
+          <div class="settings-intro">
+            <span class="section-number">01</span>
+            <h2>Blockchain monitoring</h2>
+            <p>
+              Provide your own explorer keys. Access and pricing depend on your
+              provider plan.
+            </p>
           </div>
-          <div class="field">
-            <label>Max Requests</label>
-            <input type="number" [(ngModel)]="rateLimitMax" />
+          <div class="settings-fields">
+            <label class="check"
+              ><input
+                type="checkbox"
+                name="etherscan-enabled"
+                [(ngModel)]="s.etherscan_enabled"
+              />Enable Etherscan V2</label
+            >
+            <p class="helper">
+              One Etherscan key can serve Ethereum and BNB Smart Chain. BSC plan
+              entitlement must be checked.
+            </p>
+            <label for="etherscan"
+              >Etherscan API key
+              <span class="optional">{{
+                s.etherscan_key_configured ? "configured" : "not configured"
+              }}</span></label
+            ><input
+              id="etherscan"
+              name="etherscan"
+              type="password"
+              [(ngModel)]="etherscan"
+              autocomplete="new-password"
+              placeholder="Leave blank to keep the current key"
+            /><label class="check"
+              ><input
+                name="clear-etherscan"
+                type="checkbox"
+                [(ngModel)]="clearEtherscan"
+              />Clear saved Etherscan key</label
+            >
+            <div class="chain-switches">
+              <label class="check"
+                ><input
+                  type="checkbox"
+                  name="eth"
+                  [(ngModel)]="s.chains.ethereum"
+                />Ethereum mainnet</label
+              ><label class="check"
+                ><input
+                  type="checkbox"
+                  name="bsc"
+                  [(ngModel)]="s.chains.bsc"
+                />BNB Smart Chain mainnet</label
+              >
+            </div>
+            <hr />
+            <label class="check"
+              ><input
+                type="checkbox"
+                name="solscan-enabled"
+                [(ngModel)]="s.solscan_enabled"
+              />Enable Solscan</label
+            ><label for="solscan"
+              >Solscan API key
+              <span class="optional">{{
+                s.solscan_key_configured ? "configured" : "not configured"
+              }}</span></label
+            ><input
+              id="solscan"
+              name="solscan"
+              type="password"
+              [(ngModel)]="solscan"
+              autocomplete="new-password"
+              placeholder="Leave blank to keep the current key"
+            /><label class="check"
+              ><input
+                type="checkbox"
+                name="clear-solscan"
+                [(ngModel)]="clearSolscan"
+              />Clear saved Solscan key</label
+            ><label class="check"
+              ><input
+                type="checkbox"
+                name="sol"
+                [(ngModel)]="s.chains.solana"
+              />Solana mainnet</label
+            >
+            <p class="helper">
+              Solscan wallet-transfer monitoring may require a paid Pro API
+              plan.
+            </p>
+            <label for="interval">Check every (minutes)</label
+            ><input
+              id="interval"
+              name="interval"
+              type="number"
+              min="1"
+              max="1440"
+              [(ngModel)]="s.polling_minutes"
+              required
+            />
+            <div class="alert">
+              Disabling a chain pauses monitoring, but requests still expire
+              permanently. Check wallet scan health after changing credentials.
+            </div>
           </div>
-          <div class="field">
-            <label>Window (minutes)</label>
-            <input type="number" [(ngModel)]="rateLimitWindow" />
+        </section>
+        <section class="panel settings-section">
+          <div class="settings-intro">
+            <span class="section-number">02</span>
+            <h2>Public billing</h2>
+            <p>
+              Share live payment pages when your installation is reachable by
+              your customers.
+            </p>
           </div>
-          <button class="btn-primary" (click)="saveRateLimit()" [disabled]="savingRateLimit()">{{ savingRateLimit() ? 'Saving...' : 'Save Rate Limit' }}</button>
+          <div class="settings-fields">
+            <label for="public-url"
+              >Public base URL <span class="optional">optional</span></label
+            ><input
+              id="public-url"
+              name="public-url"
+              type="url"
+              [(ngModel)]="s.public_base_url"
+              placeholder="https://pay.example.com"
+            /><small
+              >Use your site's origin without a path. Leave empty for local-only
+              PDF billing.</small
+            >
+          </div>
+        </section>
+        <section class="panel settings-section">
+          <div class="settings-intro">
+            <span class="section-number">03</span>
+            <h2>Email delivery</h2>
+            <p>
+              Optional SMTP delivery sends payment requests as PDF attachments.
+            </p>
+          </div>
+          <div class="settings-fields">
+            <label class="check"
+              ><input
+                type="checkbox"
+                name="smtp-enabled"
+                [(ngModel)]="s.smtp_enabled"
+              />Enable SMTP email</label
+            >
+            <div class="form-row">
+              <div>
+                <label for="smtp-host">SMTP host</label
+                ><input
+                  id="smtp-host"
+                  name="smtp-host"
+                  [(ngModel)]="s.smtp_host"
+                  [required]="s.smtp_enabled"
+                />
+              </div>
+              <div>
+                <label for="smtp-port">Port</label
+                ><input
+                  id="smtp-port"
+                  name="smtp-port"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  [(ngModel)]="s.smtp_port"
+                  required
+                />
+              </div>
+            </div>
+            <label for="smtp-security">Connection security</label
+            ><select
+              id="smtp-security"
+              name="smtp-security"
+              [(ngModel)]="s.smtp_security"
+            >
+              <option value="starttls">STARTTLS (usually 587)</option>
+              <option value="tls">TLS (usually 465)</option>
+              <option value="none">None (local relay only)</option></select
+            ><label for="smtp-user">Username</label
+            ><input
+              id="smtp-user"
+              name="smtp-user"
+              [(ngModel)]="s.smtp_user"
+              autocomplete="off"
+            /><label for="smtp-password"
+              >Password
+              <span class="optional">{{
+                s.smtp_password_configured ? "configured" : "not configured"
+              }}</span></label
+            ><input
+              id="smtp-password"
+              name="smtp-password"
+              type="password"
+              [(ngModel)]="smtpPassword"
+              autocomplete="new-password"
+              placeholder="Leave blank to keep the current password"
+            /><label class="check"
+              ><input
+                type="checkbox"
+                name="clear-smtp"
+                [(ngModel)]="clearSmtp"
+              />Clear saved SMTP password</label
+            ><label for="smtp-from">Sender email</label
+            ><input
+              id="smtp-from"
+              name="smtp-from"
+              type="email"
+              [(ngModel)]="s.smtp_from"
+              [required]="s.smtp_enabled"
+            /><small
+              >Sending is always an explicit action on a payment request. SMTP
+              acceptance does not guarantee inbox delivery.</small
+            >
+          </div>
+        </section>
+        <section class="panel settings-section">
+          <div class="settings-intro">
+            <span class="section-number">04</span>
+            <h2>Integration limits</h2>
+            <p>Control requests from clients using your API keys.</p>
+          </div>
+          <div class="settings-fields">
+            <label class="check"
+              ><input
+                type="checkbox"
+                name="limit-enabled"
+                [(ngModel)]="s.rate_limit_enabled"
+              />Enable shared API request limit</label
+            >
+            <div class="form-row">
+              <div>
+                <label for="limit">Maximum requests</label
+                ><input
+                  id="limit"
+                  name="limit"
+                  type="number"
+                  min="1"
+                  max="10000"
+                  [(ngModel)]="s.rate_limit_max_requests"
+                  required
+                />
+              </div>
+              <div>
+                <label for="window">Window (minutes)</label
+                ><input
+                  id="window"
+                  name="window"
+                  type="number"
+                  min="1"
+                  max="1440"
+                  [(ngModel)]="s.rate_limit_window_minutes"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+        <div class="save-bar">
+          <span>Secrets are encrypted on the server.</span
+          ><button class="primary" [disabled]="busy()">
+            {{ busy() ? "Saving…" : "Save settings →" }}
+          </button>
         </div>
-      </div>
-
-      <div class="section">
-        <div class="header-row">
-          <h2>API Tokens</h2>
-          <button class="btn-primary" (click)="generateToken()" [disabled]="generating()">{{ generating() ? 'Generating...' : 'Generate Token' }}</button>
-        </div>
-
-        @if (rawToken()) {
-          <div class="token-reveal">
-            <strong>New API Token (shown once):</strong>
-            <code>{{ rawToken() }}</code>
-            <p class="warning">Save this token — you won't see it again!</p>
-            <button class="btn-sm" (click)="rawToken.set('')">Dismiss</button>
+      </form>
+      <section class="panel form-panel">
+        <h2>Integration API tokens</h2>
+        <p class="muted">
+          Use <code>X-API-Key</code> for authenticated requests to
+          <code>/api/v1/payments</code> behind the web proxy.
+        </p>
+        @if (newToken) {
+          <div class="alert good">
+            <strong>Copy this token now. It is only shown once.</strong
+            ><code class="break token-display">{{ newToken }}</code
+            ><button type="button" class="secondary" (click)="copyToken()">
+              Copy token</button
+            ><button type="button" class="text-button" (click)="newToken = ''">
+              Dismiss
+            </button>
           </div>
         }
-
-        <table class="table">
-          <thead>
-            <tr><th>Label</th><th>Last Used</th><th>Created</th><th>Actions</th></tr>
-          </thead>
-          <tbody>
-            @for (t of tokens(); track t.id) {
+        <form class="inline-form" (ngSubmit)="createToken()">
+          <div>
+            <label for="token-label">Token label</label
+            ><input
+              id="token-label"
+              name="token-label"
+              [(ngModel)]="tokenLabel"
+              required
+              maxlength="100"
+              placeholder="My store integration"
+            />
+          </div>
+          <button class="secondary" [disabled]="busy()">Generate token</button>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
               <tr>
-                <td>{{ t.label || '-' }}</td>
-                <td>{{ t.last_used_at ? (t.last_used_at | date:'short') : 'Never' }}</td>
-                <td>{{ t.created_at | date:'short' }}</td>
-                <td><button class="btn-sm btn-danger" (click)="revoke(t.id)">Revoke</button></td>
+                <th>Label</th>
+                <th>Created (UTC)</th>
+                <th>Last used (UTC)</th>
+                <th>Action</th>
               </tr>
-            } @empty {
-              <tr><td colspan="4">No API tokens</td></tr>
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `,
-  styles: [`
-    h1 { margin: 0 0 1rem; }
-    h2 { margin: 0 0 0.75rem; }
-    .section { margin-bottom: 2rem; }
-    .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-    .form-card { background: var(--surface-card); padding: 1.25rem; border-radius: 8px; max-width: 500px; }
-    .field { margin-bottom: 0.75rem; }
-    .field label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; }
-    .field input { width: 100%; padding: 0.5rem; border: 1px solid var(--surface-border); border-radius: 6px; }
-    .field-checkbox { margin-bottom: 0.75rem; }
-    .btn-primary { padding: 0.5rem 1rem; background: var(--primary-color); color: var(--primary-color-text); border: none; border-radius: 6px; cursor: pointer; }
-    .btn-primary:disabled { opacity: 0.6; }
-    .btn-sm { padding: 0.25rem 0.5rem; border: 1px solid var(--surface-border); border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
-    .btn-danger { color: #c0392b; border-color: #c0392b; }
-    .error-banner { background: #fce4e4; color: #c0392b; padding: 0.75rem; border-radius: 6px; margin-bottom: 1rem; }
-    .token-reveal { background: #fff8e1; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
-    .token-reveal code { display: block; padding: 0.5rem; background: #fff; border: 1px solid #ffe082; border-radius: 4px; word-break: break-all; margin: 0.5rem 0; }
-    .token-reveal .warning { color: #e65100; font-size: 0.85rem; margin: 0.25rem 0; }
-    .table { width: 100%; border-collapse: collapse; background: var(--surface-card); border-radius: 8px; overflow: hidden; }
-    .table th, .table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--surface-border); }
-    .table th { background: var(--surface-ground); font-size: 0.85rem; }
-  `]
+            </thead>
+            <tbody>
+              @for (t of tokens; track t.id) {
+                <tr>
+                  <td>{{ t.label }}</td>
+                  <td>{{ t.created_at | date: "medium" : "UTC" }}</td>
+                  <td>
+                    {{
+                      t.last_used_at
+                        ? (t.last_used_at | date: "medium" : "UTC")
+                        : "Never"
+                    }}
+                  </td>
+                  <td>
+                    <button
+                      class="text-button destructive"
+                      [disabled]="busy()"
+                      (click)="revoke(t.id)"
+                    >
+                      Revoke
+                    </button>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="4" class="empty">No integration tokens yet.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }`,
 })
-export class ConfigsComponent {
-  private http = inject(HttpClient);
-  private api = environment.apiBaseUrl;
-
-  error = signal('');
-  savingKeys = signal(false);
-  savingRateLimit = signal(false);
-  generating = signal(false);
-
-  etherscanKey = '';
-  solscanKey = '';
-  rateLimitEnabled = false;
-  rateLimitMax: number | null = null;
-  rateLimitWindow: number | null = null;
-  tokens = signal<ApiToken[]>([]);
-  rawToken = signal('');
-
+export class ConfigsComponent extends ViewState {
+  api = inject(ApiService);
+  s: any;
+  tokens: any[] = [];
+  etherscan = "";
+  solscan = "";
+  smtpPassword = "";
+  clearEtherscan = false;
+  clearSolscan = false;
+  clearSmtp = false;
+  newToken = "";
+  tokenLabel = "";
   constructor() {
-    this.loadConfigs();
-    this.loadTokens();
-  }
-
-  loadConfigs() {
-    this.http.get<Configs>(`${this.api}/configs`).subscribe({
-      next: (c) => {
-        this.etherscanKey = c.etherscan_api_key || '';
-        this.solscanKey = c.solscan_api_key || '';
-        this.rateLimitEnabled = c.rate_limit_enabled;
-        this.rateLimitMax = c.rate_limit_max_requests;
-        this.rateLimitWindow = c.rate_limit_window_minutes;
-      },
-      error: () => this.error.set('Failed to load configs'),
+    super();
+    void this.run(async () => {
+      this.s = await this.api.request("/configs");
+      this.tokens = await this.api.request("/api-tokens");
     });
   }
-
-  loadTokens() {
-    this.http.get<ApiToken[]>(`${this.api}/api-tokens`).subscribe({
-      next: (t) => this.tokens.set(t),
+  save() {
+    void this.run(async () => {
+      const {
+        etherscan_key_configured,
+        solscan_key_configured,
+        smtp_password_configured,
+        ...body
+      } = this.s;
+      if (this.clearEtherscan) body.etherscan_key = null;
+      else if (this.etherscan) body.etherscan_key = this.etherscan;
+      if (this.clearSolscan) body.solscan_key = null;
+      else if (this.solscan) body.solscan_key = this.solscan;
+      if (this.clearSmtp) body.smtp_password = null;
+      else if (this.smtpPassword) body.smtp_password = this.smtpPassword;
+      this.s = await this.api.request("/configs", "PATCH", body);
+      this.etherscan = this.solscan = this.smtpPassword = "";
+      this.clearEtherscan = this.clearSolscan = this.clearSmtp = false;
+      this.notice.set(
+        "Settings saved. Interval changes apply within one minute.",
+      );
     });
   }
-
-  saveKeys() {
-    this.savingKeys.set(true);
-    this.http.patch(`${this.api}/configs`, {
-      etherscan_api_key: this.etherscanKey || null,
-      solscan_api_key: this.solscanKey || null,
-    }).subscribe({
-      next: () => { this.error.set(''); this.savingKeys.set(false); },
-      error: () => { this.error.set('Failed to save API keys'); this.savingKeys.set(false); },
-      complete: () => this.savingKeys.set(false),
+  createToken() {
+    void this.run(async () => {
+      const t = await this.api.request("/api-tokens", "POST", {
+        label: this.tokenLabel,
+      });
+      this.newToken = t.token;
+      this.tokenLabel = "";
+      this.tokens = await this.api.request("/api-tokens");
     });
   }
-
-  saveRateLimit() {
-    this.savingRateLimit.set(true);
-    this.http.patch(`${this.api}/configs`, {
-      rate_limit_enabled: this.rateLimitEnabled,
-      rate_limit_max_requests: this.rateLimitMax,
-      rate_limit_window_minutes: this.rateLimitWindow,
-    }).subscribe({
-      next: () => { this.error.set(''); this.savingRateLimit.set(false); },
-      error: () => { this.error.set('Failed to save rate limit'); this.savingRateLimit.set(false); },
-      complete: () => this.savingRateLimit.set(false),
-    });
-  }
-
-  generateToken() {
-    this.generating.set(true);
-    this.http.post<{ id: string; raw_token: string }>(`${this.api}/api-tokens`, {}).subscribe({
-      next: (t) => { this.rawToken.set(t.raw_token); this.loadTokens(); this.generating.set(false); },
-      error: () => { this.error.set('Failed to generate token'); this.generating.set(false); },
-      complete: () => this.generating.set(false),
-    });
-  }
-
   revoke(id: string) {
-    this.http.delete(`${this.api}/api-tokens/${id}`).subscribe({
-      next: () => this.loadTokens(),
-      error: () => this.error.set('Failed to revoke token'),
+    if (!confirm("Revoke this API token? Clients using it will lose access."))
+      return;
+    void this.run(async () => {
+      await this.api.request("/api-tokens/" + id, "DELETE");
+      this.tokens = await this.api.request("/api-tokens");
+    });
+  }
+  copyToken() {
+    void this.run(async () => {
+      await navigator.clipboard.writeText(this.newToken);
+      this.notice.set("Token copied.");
     });
   }
 }

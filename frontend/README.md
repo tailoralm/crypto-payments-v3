@@ -1,44 +1,17 @@
-# CryptoPay Manager — Frontend
+# CryptoPay frontend
 
-Angular application for CryptoPay Manager. Provides the UI for dashboard reports, payment intentions, wallet management, and user configs.
+Angular 21 standalone, lazy-loaded owner workspace and anonymous billing. Styling uses local CSS with no remote font dependency. HTTP/session behavior is centralized in `shared/api.service.ts`; access tokens remain in memory, with same-origin httpOnly refresh cookies.
 
-## Stack
+Use Node.js 22:
 
-- Angular (latest LTS)
-- Standalone components
-- Consumes the backend REST API (JWT-protected)
-
-## Structure (planned)
-
-```
-frontend/
-├── src/
-│   └── app/
-│       ├── dashboard/
-│       ├── payments/
-│       ├── wallets/
-│       ├── configs/
-│       ├── auth/
-│       └── shared/
-├── docs/
-│   ├── project-overview.md
-│   └── agent.md
-├── Dockerfile
-├── nginx.conf
-└── package.json
-```
-
-## Getting Started
-
-This app has not been scaffolded yet. See `docs/agent.md` for full development instructions and `docs/project-overview.md` for architecture and business rules.
-
-## Local Development
-
-```bash
-npm install
+```sh
+npm ci
 npm start
+npm run build
 ```
 
-## Docker
+Development `/api` requests proxy to localhost:3000. Production Nginx serves built assets and proxies `/api/` to the private backend. Critical-CSS inlining is disabled to avoid an inline stylesheet-loading handler blocked by the content-security policy. `.npmrc` works around npm 10 optional Angular test-peer resolution.
 
-Built and served via Nginx as part of the root `docker-compose.yml`.
+`npm run test:e2e` runs Chromium against E2E_BASE_URL (default localhost:18080); see [validation](../docs/acceptance.md) for the isolated stack/setup token. Tests cover owner setup/login, settings, wallet registration, creation, PDF, anonymous bill, cancellation, session refresh, responsive layouts and accessibility.
+
+See [specification](../docs/product-specification.md), [API](../docs/api-surface.md), and [current status](../docs/current-state.md). Smartphone QR compatibility and external hosting require operator validation.

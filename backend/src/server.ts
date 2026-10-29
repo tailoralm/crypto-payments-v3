@@ -1,46 +1,33 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import cookieParser from 'cookie-parser';
-import { authRoutes } from './modules/auth';
-import { configsRoutes } from './modules/configs';
-import { walletsRoutes } from './modules/wallets';
-import { customContractsRoutes } from './modules/custom-contracts';
-import { paymentsRoutes } from './modules/payments';
-import { apiTokensRoutes } from './modules/api-tokens';
-import { reportsRoutes } from './modules/reports';
-import { publicRoutes } from './modules/public';
-import { tokensRoutes } from './modules/tokens';
-import { startPaymentPoller } from './jobs/payment-poller.job';
-import { errorMiddleware } from './common/middlewares';
-
-const app = express();
-const PORT = Number(process.env.PORT) || 3000;
-
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:4200', credentials: true }));
-app.use(express.json());
-app.use(cookieParser());
-
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+import "dotenv/config";
+import db from "./db/knex";
+import { createApp } from "./app";
+import { startPoller } from "./core/poller";
+async function main() {
+  for (const key of ["JWT_SECRET", "ENCRYPTION_KEY", "SETUP_TOKEN"])
+    if (
+      !process.env[key] ||
+      process.env[key]!.length < 32 ||
+      /changeme|replace-with/i.test(process.env[key]!)
+    )
+      throw new Error(
+        `${key} must be set to a unique secret of at least 32 characters.`,
+      );
+  await db.migrate.latest();
+  const stop = process.env.DISABLE_POLLER === "true" ? () => {} : startPoller();
+  const server = createApp().listen(
+    Number(process.env.PORT || 3000),
+    "0.0.0.0",
+    () => console.log("CryptoPay API listening."),
+  );
+  for (const signal of ["SIGTERM", "SIGINT"])
+    process.on(signal, () => {
+      stop();
+      server.close(() => {
+        void db.destroy().then(() => process.exit(0));
+      });
+    });
+}
+main().catch((err) => {
+  console.error(err.message);
+  void db.destroy().then(() => process.exit(1));
 });
-
-app.use('/auth', authRoutes);
-app.use('/configs', configsRoutes);
-app.use('/wallets', walletsRoutes);
-app.use('/custom-contracts', customContractsRoutes);
-app.use('/payments', paymentsRoutes);
-app.use('/api-tokens', apiTokensRoutes);
-app.use('/reports', reportsRoutes);
-app.use('/tokens', tokensRoutes);
-app.use('/api/v1', publicRoutes);
-
-app.use(errorMiddleware);
-
-startPaymentPoller();
-
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
-});
-
-export default app;

@@ -1,79 +1,83 @@
-import { Component, inject } from '@angular/core';
-import { Router, RouterModule, RouterOutlet } from '@angular/router';
-import { AuthService } from './auth.service';
-import { CommonModule } from '@angular/common';
-
+import { Component, inject } from "@angular/core";
+import {
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from "@angular/router";
+import { ApiService } from "./api.service";
 @Component({
-  selector: 'app-layout',
+  selector: "app-layout",
   standalone: true,
-  imports: [RouterModule, RouterOutlet, CommonModule],
-  template: `
-    <div class="layout">
-      <div class="sidebar" [class.collapsed]="sidebarCollapsed">
-        <div class="sidebar-header">
-          <h2>CryptoPay</h2>
-        </div>
-        <nav class="sidebar-nav">
-          <a routerLink="/dashboard" routerLinkActive="active" class="nav-item">
-            <span class="pi pi-home"></span>
-            <span class="nav-label">Dashboard</span>
-          </a>
-          <a routerLink="/payments" routerLinkActive="active" class="nav-item">
-            <span class="pi pi-credit-card"></span>
-            <span class="nav-label">Payments</span>
-          </a>
-          <a routerLink="/wallets" routerLinkActive="active" class="nav-item">
-            <span class="pi pi-wallet"></span>
-            <span class="nav-label">Wallets</span>
-          </a>
-          <a routerLink="/configs" routerLinkActive="active" class="nav-item">
-            <span class="pi pi-cog"></span>
-            <span class="nav-label">Configs</span>
-          </a>
+  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  template: ` <a href="#main" class="skip-link">Skip to content</a>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" routerLink="/dashboard"
+          ><span class="brand-mark">C<span>↗</span></span
+          ><span>CryptoPay<small>SELF-HOSTED PAYMENTS</small></span></a
+        >
+        <div class="nav-caption">WORKSPACE</div>
+        <nav aria-label="Main navigation">
+          <a routerLink="/dashboard" routerLinkActive="active"
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" /></svg
+            >Overview</a
+          >
+          <a routerLink="/payments" routerLinkActive="active"
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z M9 8h6 M9 12h6" /></svg
+            >Payment requests</a
+          >
+          <a routerLink="/wallets" routerLinkActive="active"
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6V4h15v4 M3 8h18v12H3Z M16 12h5v4h-5Z" /></svg
+            >Wallets</a
+          >
+          <a routerLink="/settings" routerLinkActive="active"
+            ><svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16 M4 12h16 M4 18h16" />
+              <circle cx="8" cy="6" r="2" />
+              <circle cx="16" cy="12" r="2" />
+              <circle cx="9" cy="18" r="2" /></svg
+            >Settings</a
+          >
         </nav>
-        <div class="sidebar-footer">
-          <span class="user-email">{{ auth.user()?.email }}</span>
-          <button class="btn-logout" (click)="logout()">Logout</button>
+        <div class="sidebar-bottom">
+          <div class="private-note">
+            <span class="dot"></span>Your instance. Your wallets.<small
+              >Funds stay in your control.</small
+            >
+          </div>
+          <button class="logout" (click)="logout()">Sign out ↗</button>
         </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <span>Payment operations</span
+          ><span class="instance"
+            ><span class="dot"></span>Self-hosted instance</span
+          ><button class="text-button" (click)="logout()">Sign out</button>
+        </header>
+        <main id="main" tabindex="-1"><router-outlet /></main>
+        <footer>
+          CryptoPay Manager <span>Non-custodial · All times UTC</span>
+        </footer>
       </div>
-      <div class="main-content">
-        <router-outlet />
-      </div>
-    </div>
-  `,
-  styles: [`
-    .layout { display: flex; height: 100vh; }
-    .sidebar {
-      width: 250px; background: var(--surface-card); border-right: 1px solid var(--surface-border);
-      display: flex; flex-direction: column; transition: width 0.2s;
-    }
-    .sidebar.collapsed { width: 60px; }
-    .sidebar-header { padding: 1rem; border-bottom: 1px solid var(--surface-border); }
-    .sidebar-header h2 { margin: 0; font-size: 1.25rem; }
-    .sidebar-nav { flex: 1; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; }
-    .nav-item {
-      display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-radius: 6px;
-      text-decoration: none; color: var(--text-color); transition: background 0.15s;
-    }
-    .nav-item:hover { background: var(--surface-hover); }
-    .nav-item.active { background: var(--primary-color); color: var(--primary-color-text); }
-    .nav-label { font-size: 0.9rem; }
-    .sidebar-footer { padding: 1rem; border-top: 1px solid var(--surface-border); font-size: 0.85rem; }
-    .user-email { display: block; margin-bottom: 0.5rem; word-break: break-all; }
-    .btn-logout {
-      width: 100%; padding: 0.5rem; border: 1px solid var(--surface-border); border-radius: 6px;
-      background: transparent; cursor: pointer; color: var(--text-color-secondary);
-    }
-    .btn-logout:hover { background: var(--surface-hover); }
-    .main-content { flex: 1; overflow-y: auto; }
-  `]
+    </div>`,
 })
 export class LayoutComponent {
-  auth = inject(AuthService);
-  private router = inject(Router);
-  sidebarCollapsed = false;
-
-  logout() {
-    this.auth.logout().subscribe(() => this.router.navigate(['/login']));
+  api = inject(ApiService);
+  router = inject(Router);
+  async logout() {
+    try {
+      await this.api.logout();
+      await this.router.navigateByUrl("/login");
+    } catch {
+      window.alert("Unable to sign out. Check your connection and retry.");
+    }
   }
 }
