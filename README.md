@@ -4,6 +4,9 @@ Self-hosted, non-custodial crypto payment management for one owner. Register rec
 
 Funds go directly to your wallet. CryptoPay never stores private keys, signs transactions, or moves funds.
 
+<img width="2528" height="1413" alt="image" src="https://github.com/user-attachments/assets/018f6a6f-63d4-436d-b722-affee10b4c66" />
+
+
 ## Run locally with Docker
 
 Requires Docker with Compose and Node.js to generate installation secrets:
