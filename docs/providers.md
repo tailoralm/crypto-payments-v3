@@ -1,5 +1,7 @@
 # Provider guide
 
+See [merchant integrations and operations](merchant-workflow.md) for publication, callbacks, Cloudflare, alerts and audited recovery (added 2026-10-30).
+
 Checked against official documentation on 2026-10-28. Adapters now implement the integration behavior below; live credentials and real transfers have not been used to validate access. This is not a guarantee of future pricing. No API credentials or live transfer requests were used. The owner chose the named explorer providers even where paid access is needed; free monitoring on all chains is not a release promise.
 
 ## Explorer mapping and access

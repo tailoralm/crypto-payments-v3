@@ -2,6 +2,7 @@ import db from "../db/knex";
 import { available, settings } from "./settings";
 import { eligible, normalized, Transfer } from "./domain";
 import { fetchTransfers } from "./providers";
+import { transition } from "./events";
 export type Fetcher = typeof fetchTransfers;
 export async function reconcile(
   wallet: any,
@@ -63,17 +64,20 @@ export async function reconcile(
       await trx("transfers")
         .where({ id: event.id })
         .update({ payment_id: p.id });
-      await trx("payment_intentions")
-        .where({ id: p.id, status: "IN_PROGRESS" })
-        .update({
-          status: "SUCCESS",
+      await transition(
+        trx,
+        p,
+        "SUCCESS",
+        {
           paid_at: new Date(tx.timestamp * 1000),
           detected_at: trx.fn.now(),
           concluded_at: trx.fn.now(),
           concluded_tx_hash: tx.tx,
           concluded_from_address: tx.from,
           updated_at: trx.fn.now(),
-        });
+        },
+        tx,
+      );
       p.status = "SUCCESS";
     }
   });
@@ -136,12 +140,17 @@ export async function poll(
           .where({ id: w.id })
           .update({ scan_error: e.message?.slice(0, 500) || "Scan failed." });
       }
-      await db("payment_intentions")
-        .where({ wallet_id: w.id, status: "IN_PROGRESS" })
-        .where("expires_at", "<=", db.fn.now())
-        .update({ status: "EXPIRED", updated_at: db.fn.now() });
+      await db.transaction(async (trx) => {
+        const expired = await trx("payment_intentions")
+          .where({ wallet_id: w.id, status: "IN_PROGRESS" })
+          .where("expires_at", "<=", trx.fn.now())
+          .orderBy("created_at")
+          .forUpdate();
+        for (const p of expired) await transition(trx, p, "EXPIRED");
+      });
     }
     await db("sessions").where("expires_at", "<", db.fn.now()).del();
+    await db("idempotency_keys").where("expires_at", "<=", db.fn.now()).del();
     await db("api_buckets")
       .where("reset_at", "<", db.raw("now() - interval '1 day'"))
       .del();

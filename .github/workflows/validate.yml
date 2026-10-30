@@ -49,6 +49,7 @@ jobs:
       - run: docker compose up --build -d --wait
         env:
           DISABLE_POLLER: 'true'
+          COMPOSE_PROJECT_NAME: cryptopay-ci
       - run: npm ci
         working-directory: frontend
       - run: npx playwright install --with-deps chromium
@@ -60,6 +61,8 @@ jobs:
           export E2E_SETUP_TOKEN="$SETUP_TOKEN"
           export E2E_BASE_URL=http://127.0.0.1:8080
           npm --prefix frontend run test:e2e
+      - name: Check public gateway isolation
+        run: docker run --rm --network cryptopay-ci_default -v "$PWD/scripts/check-public-gateway.mjs:/check.mjs:ro" node:22-bookworm-slim node /check.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -67,5 +70,5 @@ jobs:
           path: |
             artifacts/
             frontend/test-results/
-      - run: docker compose down
+      - run: docker compose -p cryptopay-ci down
         if: always()

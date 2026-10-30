@@ -10,7 +10,7 @@
     "migrate:rollback": "knex migrate:rollback --knexfile src/db/knexfile.ts",
     "seed": "knex seed:run --knexfile src/db/knexfile.ts",
     "test": "tsx --test --test-concurrency=1 test/*.test.ts",
-    "test:integration": "tsx --test --test-concurrency=1 test/integration.ts test/upgrade.ts"
+    "test:integration": "tsx --test --test-concurrency=1 test/integration.ts test/merchant.integration.ts test/upgrade.ts"
   },
   "dependencies": {
     "axios": "^1.7.0",

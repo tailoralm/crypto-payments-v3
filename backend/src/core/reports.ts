@@ -25,7 +25,11 @@ export async function dashboard(owner: string): Promise<any> {
     const row = await successful()
       .where("paid_at", ">=", since)
       .count("* as count")
-      .sum("value as amount")
+      .select(
+        db.raw(
+          "SUM(CASE WHEN review IS NOT NULL THEN (review->'evidence'->>'amount')::numeric / power(10::numeric, (snapshot->>'decimals')::int) ELSE value END) AS amount",
+        ),
+      )
       .first();
     return {
       count: Number(row.count),

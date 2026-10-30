@@ -46,7 +46,9 @@ test("owner setup, settings, wallets, requests, public billing, cancellation and
   await page.getByLabel("Ethereum mainnet", { exact: true }).check();
   await page.getByLabel("Public base URL").fill(baseURL!);
   await page.getByRole("button", { name: "Save settings" }).click();
-  await expect(page.getByRole("status")).toContainText("Settings saved");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Settings saved" }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Wallets", exact: true }).click();
   const suffix = Date.now().toString(16).padStart(40, "0");
   await page
@@ -69,6 +71,7 @@ test("owner setup, settings, wallets, requests, public billing, cancellation and
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download billing PDF" }).click();
   expect((await download).suggestedFilename()).toMatch(/^CP-.*\.pdf$/);
+  await page.getByRole("button", { name: "Generate public page" }).click();
   const publicHref = await page
     .getByRole("link", { name: "Open public billing page" })
     .getAttribute("href");

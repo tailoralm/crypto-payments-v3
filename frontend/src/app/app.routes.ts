@@ -25,6 +25,13 @@ export const routes: Routes = [
     canActivate: [ownerGuard],
     children: [
       {
+        path: "recovery",
+        loadComponent: () =>
+          import("./payments/recovery.component").then(
+            (m) => m.RecoveryComponent,
+          ),
+      },
+      {
         path: "dashboard",
         loadComponent: () =>
           import("./dashboard/dashboard.component").then(

@@ -44,6 +44,21 @@ import { StatusComponent, CountdownComponent } from "../shared/ui";
           </div>
           <h2 class="bill-amount">{{ p.value }} <span>USDT</span></h2>
           <p class="muted">{{ p.snapshot.asset_label }}</p>
+          @if (p.amount_mode === "unique") {
+            <p class="alert">
+              Requested {{ p.requested_amount }} USDT. Send exactly
+              {{ p.value }} USDT, including the unique increment.
+            </p>
+          }
+          @if (p.external_order_id) {
+            <p>Order: {{ p.external_order_id }}</p>
+          }
+          @if (p.review) {
+            <p class="alert">
+              Accepted after owner review: {{ p.review.reason }}. Received
+              {{ p.review.received_amount }} USDT.
+            </p>
+          }
           @if (p.qr) {
             <img class="payment-qr" [src]="p.qr" alt="Wallet payment QR code" />
             <p class="helper">Scan with a compatible wallet</p>
@@ -91,6 +106,23 @@ import { StatusComponent, CountdownComponent } from "../shared/ui";
             >
               ↓ Download billing PDF
             </button>
+            @if (!p.billing_published) {
+              <button
+                class="primary wide"
+                [disabled]="busy()"
+                (click)="publish(true)"
+              >
+                Generate public page
+              </button>
+            } @else {
+              <button
+                class="text-button wide"
+                [disabled]="busy()"
+                (click)="publish(false)"
+              >
+                Revoke public page
+              </button>
+            }
             @if (p.public_url) {
               <a
                 class="secondary wide"
@@ -103,8 +135,8 @@ import { StatusComponent, CountdownComponent } from "../shared/ui";
               </button>
             } @else {
               <p class="helper">
-                Local-only billing. Configure a public URL in Settings to share
-                a live page.
+                Publish this request and configure a public origin or Cloudflare
+                in Settings to share a live page.
               </p>
             }
             @if (p.smtp_enabled) {
@@ -168,6 +200,16 @@ export class PaymentDetailComponent extends ViewState implements OnDestroy {
       async () =>
         (this.p = await this.api.request("/payments/" + this.id + "/billing")),
     );
+  }
+  publish(enabled: boolean) {
+    void this.run(async () => {
+      await this.api.request(
+        `/payments/${this.id}/${enabled ? "publish" : "revoke"}`,
+        "POST",
+        {},
+      );
+      this.p = await this.api.request(`/payments/${this.id}/billing`);
+    });
   }
   download() {
     void this.run(() =>

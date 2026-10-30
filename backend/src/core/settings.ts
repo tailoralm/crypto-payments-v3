@@ -2,7 +2,14 @@ import db from "../db/knex";
 import { encrypt, decrypt } from "../common/encryption";
 import { defaultSettings, settingsSchema, fail, Chain } from "./domain";
 import { z } from "zod";
-const secretFields = ["etherscan_key", "solscan_key", "smtp_password"] as const;
+import { callbackOrigin } from "./outbound";
+const secretFields = [
+  "etherscan_key",
+  "solscan_key",
+  "smtp_password",
+  "cloudflare_api_token",
+  "webhook_secret",
+] as const;
 export async function settings(secrets = false, query = db): Promise<any> {
   const row = await query("installation").where({ id: 1 }).first();
   const s: any = { ...defaultSettings, ...row.settings };
@@ -17,6 +24,11 @@ export async function settings(secrets = false, query = db): Promise<any> {
       }
     } else delete s[k];
   }
+  const cf = await query("cloudflare_state").where({ id: 1 }).first();
+  s.billing_origin =
+    cf?.state?.enabled && cf.state.verified_origin
+      ? cf.state.verified_origin
+      : s.public_base_url;
   return s;
 }
 export async function saveSettings(input: unknown): Promise<any> {
@@ -29,10 +41,14 @@ export async function saveSettings(input: unknown): Promise<any> {
   ) as typeof parsed;
   await db.transaction(async (trx) => {
     const row = await trx("installation").where({ id: 1 }).forUpdate().first();
-    const merged = { ...defaultSettings, ...row.settings, ...patch };
+    const merged: any = { ...defaultSettings, ...row.settings, ...patch };
+    if (patch.allowed_callback_origins)
+      merged.allowed_callback_origins = [
+        ...new Set(patch.allowed_callback_origins.map(callbackOrigin)),
+      ];
     for (const k of secretFields)
       if (Object.hasOwn(patch, k))
-        merged[k] = patch[k] ? encrypt(patch[k]!) : null;
+        merged[k] = (patch as any)[k] ? encrypt((patch as any)[k]) : null;
     if (
       merged.smtp_enabled &&
       (!merged.smtp_host || !z.email().safeParse(merged.smtp_from).success)

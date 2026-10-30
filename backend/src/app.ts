@@ -22,6 +22,9 @@ import * as payments from "./core/payments";
 import { dashboard } from "./core/reports";
 import { billingView, pdf, emailPayment } from "./core/billing";
 import { poll } from "./core/poller";
+import { encrypt } from "./common/encryption";
+import * as recovery from "./core/recovery";
+import * as cloudflare from "./core/cloudflare";
 
 export const hash = (s: string) =>
   crypto.createHash("sha256").update(s).digest("hex");
@@ -98,7 +101,7 @@ async function owner(req: any): Promise<string> {
     return fail(401, "UNAUTHORIZED", "Sign in to continue.");
   }
 }
-async function apiOwner(req: any): Promise<string> {
+async function apiOwner(req: any, res?: Response): Promise<string> {
   const key = req.headers["x-api-key"];
   if (typeof key !== "string" || key.length > 255)
     fail(401, "INVALID_API_KEY", "A valid X-API-Key is required.");
@@ -113,12 +116,28 @@ async function apiOwner(req: any): Promise<string> {
       `INSERT INTO api_buckets (key, count, reset_at) VALUES (?, 1, now() + (? * interval '1 minute')) ON CONFLICT (key) DO UPDATE SET count = CASE WHEN api_buckets.reset_at <= now() THEN 1 ELSE api_buckets.count + 1 END, reset_at = CASE WHEN api_buckets.reset_at <= now() THEN now() + (? * interval '1 minute') ELSE api_buckets.reset_at END RETURNING count, reset_at`,
       [bucket, s.rate_limit_window_minutes, s.rate_limit_window_minutes],
     );
-    if (result.rows[0].count > s.rate_limit_max_requests)
+    const remaining = Math.max(
+      0,
+      s.rate_limit_max_requests - result.rows[0].count,
+    );
+    const reset = Math.max(
+      0,
+      Math.ceil((+new Date(result.rows[0].reset_at) - Date.now()) / 1000),
+    );
+    res?.set({
+      "RateLimit-Limit": String(s.rate_limit_max_requests),
+      "RateLimit-Remaining": String(remaining),
+      "RateLimit-Reset": String(reset),
+      "RateLimit-Policy": `${s.rate_limit_max_requests};w=${s.rate_limit_window_minutes * 60}`,
+    });
+    if (result.rows[0].count > s.rate_limit_max_requests) {
+      res?.set("Retry-After", String(reset));
       fail(
         429,
         "RATE_LIMIT_EXCEEDED",
         "API request limit reached. Retry after the configured window.",
       );
+    }
   }
   await db("api_tokens")
     .where({ id: token.id })
@@ -358,6 +377,176 @@ export function createApp() {
       res.json(await saveSettings(req.body));
     }),
   );
+  app.post(
+    "/configs/webhook-secret",
+    wrap(async (req, res) => {
+      await owner(req);
+      const secret = "whsec_" + crypto.randomBytes(32).toString("hex");
+      await db.transaction(async (trx) => {
+        const row = await trx("installation")
+          .where({ id: 1 })
+          .forUpdate()
+          .first();
+        await trx("installation")
+          .where({ id: 1 })
+          .update({
+            settings: { ...row.settings, webhook_secret: encrypt(secret) },
+          });
+      });
+      res.json({ secret });
+    }),
+  );
+  const historyPage = (query: any) =>
+    z
+      .object({
+        page: z.coerce.number().int().min(1).default(1),
+        page_size: z.coerce.number().int().min(1).max(100).default(25),
+      })
+      .parse(query);
+  app.get(
+    "/notifications",
+    wrap(async (req, res) => {
+      const paging = historyPage(req.query);
+      const id = await owner(req);
+      const unread = await db("notifications")
+        .where({ owner_id: id })
+        .whereNull("read_at")
+        .count("* as count")
+        .first();
+      const total = await db("notifications")
+        .where({ owner_id: id })
+        .count("* as count")
+        .first();
+      res.json({
+        ...paging,
+        total: Number(total?.count || 0),
+        unread: Number(unread?.count || 0),
+        items: await db("notifications")
+          .where({ owner_id: id })
+          .orderBy([
+            { column: "created_at", order: "desc" },
+            { column: "id", order: "desc" },
+          ])
+          .limit(paging.page_size)
+          .offset((paging.page - 1) * paging.page_size),
+      });
+    }),
+  );
+  app.post(
+    "/notifications/:id/read",
+    wrap(async (req, res) => {
+      const id = await owner(req);
+      uuid.parse(req.params.id);
+      await db("notifications")
+        .where({ id: req.params.id, owner_id: id })
+        .update({ read_at: db.fn.now() });
+      res.json({ read: true });
+    }),
+  );
+  app.get(
+    "/webhooks",
+    wrap(async (req, res) => {
+      const paging = historyPage(req.query);
+      const id = await owner(req);
+      const base = () =>
+        db("webhook_deliveries as d")
+          .join("payment_events as e", "d.event_id", "e.id")
+          .where({ "e.owner_id": id });
+      const counts = await base()
+        .select("d.status")
+        .count("* as count")
+        .groupBy("d.status");
+      res.json({
+        ...paging,
+        total: counts.reduce((n, r) => n + Number(r.count), 0),
+        counts: Object.fromEntries(
+          counts.map((r) => [r.status, Number(r.count)]),
+        ),
+        items: await base()
+          .select("d.*", "e.payment_id", "e.type", "e.created_at")
+          .orderBy([
+            { column: "e.created_at", order: "desc" },
+            { column: "d.id", order: "desc" },
+          ])
+          .limit(paging.page_size)
+          .offset((paging.page - 1) * paging.page_size),
+      });
+    }),
+  );
+  app.post(
+    "/webhooks/:id/retry",
+    wrap(async (req, res) => {
+      const id = await owner(req);
+      uuid.parse(req.params.id);
+      const row = await db("webhook_deliveries as d")
+        .join("payment_events as e", "e.id", "d.event_id")
+        .where({ "d.id": req.params.id, "e.owner_id": id })
+        .select("d.*")
+        .first();
+      if (!row) fail(404, "NOT_FOUND", "Delivery not found.");
+      const changed = await db("webhook_deliveries")
+        .where({ id: row.id })
+        .whereIn("status", ["FAILED", "BLOCKED", "PENDING"])
+        .update({
+          status: "PENDING",
+          attempts: 0,
+          next_attempt_at: db.fn.now(),
+          error: null,
+        });
+      if (!changed)
+        fail(
+          409,
+          "DELIVERY_BUSY",
+          "Only pending, blocked or failed deliveries can be retried.",
+        );
+      res.json({ queued: true });
+    }),
+  );
+  app.post(
+    "/recovery/scan",
+    wrap(async (req, res) =>
+      res.json(await recovery.scanRecovery(await owner(req), req.body)),
+    ),
+  );
+  app.get(
+    "/recovery/:wallet",
+    wrap(async (req, res) =>
+      res.json(
+        await recovery.recoveryCandidates(await owner(req), req.params.wallet),
+      ),
+    ),
+  );
+  app.post(
+    "/recovery/accept",
+    wrap(async (req, res) =>
+      res.json(await recovery.acceptRecovery(await owner(req), req.body)),
+    ),
+  );
+  app.get(
+    "/cloudflare",
+    wrap(async (req, res) => {
+      await owner(req);
+      res.json(await cloudflare.status());
+    }),
+  );
+  for (const action of [
+    "provision",
+    "reconnect",
+    "check",
+    "disable",
+    "remove",
+  ] as const)
+    app.post(
+      "/cloudflare/" + action,
+      wrap(async (req, res) => {
+        await owner(req);
+        res.json(await cloudflare.action(action));
+      }),
+    );
+  app.get(
+    "/public-ready",
+    wrap(async (_req, res) => res.json(await cloudflare.readiness())),
+  );
   app.get(
     "/reports/dashboard",
     wrap(async (req, res) => res.json(await dashboard(await owner(req)))),
@@ -376,11 +565,28 @@ export function createApp() {
     }),
   );
   for (const prefix of ["", "/api/v1"]) {
-    const identify = prefix ? apiOwner : owner;
+    const identify = prefix
+      ? apiOwner
+      : (req: any, _res?: Response) => owner(req);
+    for (const action of ["publish", "revoke"])
+      app.post(
+        prefix + "/payments/:id/" + action,
+        wrap(async (req, res) =>
+          res.json(
+            await payments.publication(
+              await identify(req, res),
+              req.params.id,
+              action === "publish",
+            ),
+          ),
+        ),
+      );
     app.get(
       prefix + "/payments",
       wrap(async (req, res) =>
-        res.json(await payments.listPayments(await identify(req), req.query)),
+        res.json(
+          await payments.listPayments(await identify(req, res), req.query),
+        ),
       ),
     );
     app.post(
@@ -388,13 +594,21 @@ export function createApp() {
       wrap(async (req, res) =>
         res
           .status(201)
-          .json(await payments.createPayment(await identify(req), req.body)),
+          .json(
+            await payments.createPayment(
+              await identify(req, res),
+              req.body,
+              req.headers["idempotency-key"],
+            ),
+          ),
       ),
     );
     app.get(
       prefix + "/payments/:id",
       wrap(async (req, res) =>
-        res.json(await payments.getPayment(await identify(req), req.params.id)),
+        res.json(
+          await payments.getPayment(await identify(req, res), req.params.id),
+        ),
       ),
     );
   }

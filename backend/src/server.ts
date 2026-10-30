@@ -2,6 +2,8 @@ import "dotenv/config";
 import db from "./db/knex";
 import { createApp } from "./app";
 import { startPoller } from "./core/poller";
+import { startDeliveryWorker } from "./core/events";
+import { startTunnelSupervisor } from "./core/cloudflare";
 async function main() {
   for (const key of ["JWT_SECRET", "ENCRYPTION_KEY", "SETUP_TOKEN"])
     if (
@@ -14,6 +16,8 @@ async function main() {
       );
   await db.migrate.latest();
   const stop = process.env.DISABLE_POLLER === "true" ? () => {} : startPoller();
+  const stopDelivery = startDeliveryWorker();
+  const stopTunnel = startTunnelSupervisor();
   const server = createApp().listen(
     Number(process.env.PORT || 3000),
     "0.0.0.0",
@@ -22,8 +26,9 @@ async function main() {
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => {
       stop();
+      const stopped = Promise.all([stopDelivery(), stopTunnel()]);
       server.close(() => {
-        void db.destroy().then(() => process.exit(0));
+        void stopped.then(() => db.destroy()).then(() => process.exit(0));
       });
     });
 }

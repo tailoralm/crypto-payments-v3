@@ -1,6 +1,8 @@
 # Current implementation
 
-Updated 2026-10-29 after implementation. The [historical audit](archive/2026-10-28-before-implementation.md) records the previous incomplete state. The application has been built and exercised with PostgreSQL, production containers, Chromium, mocked explorers, and a local SMTP relay. Live explorer credentials, real-chain payments, external email delivery, and public HTTPS hosting were not available for validation.
+See [merchant integrations and operations](merchant-workflow.md) for publication, callbacks, Cloudflare, alerts and audited recovery (added 2026-10-30).
+
+Updated 2026-10-30 after implementation. The [historical audit](archive/2026-10-28-before-implementation.md) records the previous incomplete state. The application has been built and exercised with PostgreSQL, production containers, Chromium, mocked explorers, and a local SMTP relay. Live explorer credentials, real-chain payments, external email delivery, and public HTTPS hosting were not available for validation.
 
 ## Capability and evidence
 
@@ -34,7 +36,7 @@ Angular uses standalone lazy-loaded pages, centralized HTTP/session handling, me
 - Active windows are replayed completely, bounded to 100 pages per wallet per scan. This favors correctness under indexing lag over quota efficiency. Checkpoints describe completed scan attempts, not proof that an explorer has indexed every transfer.
 - Solscan transaction success is verified through transaction detail. Missing instruction identity on multi-transfer responses prevents automatic attribution; that wallet scan reports an error. No independent Solana finality guarantee is made.
 - Twelve EVM confirmations reduce reorganization risk but are not an irreversible-settlement guarantee. Receipt and supporting API availability depend on provider access.
-- Final expiry continues during errors/disablement; once expired, payment status never reopens automatically. There is no manual “mark paid” override or refund mechanism.
+- Final expiry continues during errors/disablement; once expired, payment status never reopens automatically. Audited owner recovery can accept verified unassigned transfer evidence; there is no evidence-free “mark paid” override or refund mechanism.
 - New requests are curated USDT only. Legacy custom history remains readable and excluded from USDT metrics. Upgrades requiring ownership mapping or active custom-asset resolution intentionally stop.
 - Legacy successes without chain paid-time evidence remain visible but are excluded from day/month totals and explicitly counted as unknown-time history.
 - Public bill links are bearer capabilities. Local-only operation provides PDF/QR, not internet access to live status. PDFs are snapshots and external SMTP acceptance is not inbox delivery.

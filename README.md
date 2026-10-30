@@ -30,13 +30,17 @@ The generator refuses to overwrite `.env`. Keep it backed up securely, especiall
 - One-owner bootstrap, revocable sessions, encrypted provider/SMTP credentials, and authenticated integration API tokens.
 - Angular 21 interface, Express/TypeScript API, PostgreSQL 16, and production Docker images.
 
+## Merchant workflow
+
+Create idempotent store charges, publish/revoke bills, receive signed durable webhooks, opt into unique payable amounts, and review payment recovery. Optional Cloudflare provisioning keeps owner administration private. See the [merchant operating guide](docs/merchant-workflow.md) for API examples, webhook verification, setup and upgrade behavior. New requests are unpublished unless explicitly requested.
+
 ## Provider boundaries
 
 Bring your own Etherscan V2 and Solscan keys. Ethereum and BSC share the Etherscan multichain API. **Free access across all three chains is not guaranteed.** BSC's configured asset is explicitly labeled USDT / Binance-Peg BSC-USD.
 
 Explorer integrations have deterministic tests but have not been validated with live credentials or real payments in this implementation session. EVM verification uses successful receipts and 12 confirmations. Solscan relies on indexed successful execution; multi-transfer responses without instruction identity stop safely with a monitoring error. See [provider details](docs/providers.md) before taking real payments.
 
-Expiry is final: an outage, indexing delay, or disabled provider can leave a real transfer unrecognized after the request becomes EXPIRED. Wallet QR compatibility depends on the payer's wallet.
+Normal expiry is final: an outage, indexing delay, or disabled provider can leave a real transfer unrecognized after the request becomes EXPIRED. Owners can explicitly review verified unassigned transfers through audited recovery. Wallet QR compatibility depends on the payer's wallet.
 
 ## Documentation
 

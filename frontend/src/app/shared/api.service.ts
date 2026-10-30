@@ -12,6 +12,11 @@ export interface Wallet {
 }
 export interface Payment {
   id: string;
+  requested_amount: string;
+  amount_mode: "exact" | "unique";
+  billing_published: boolean;
+  external_order_id?: string;
+  review?: any;
   reference: string;
   description: string;
   value: string;
@@ -102,9 +107,12 @@ export class ApiService {
       return this.request(path, method, body, headers, false);
     if (!response.ok) {
       const data = await response.json().catch(() => null);
-      throw new Error(
-        data?.error?.message ||
-          "Unable to complete the request. Check your connection and try again.",
+      throw Object.assign(
+        new Error(
+          data?.error?.message ||
+            "Unable to complete the request. Check your connection and try again.",
+        ),
+        { status: response.status },
       );
     }
     return response.json();

@@ -1,5 +1,7 @@
 # API reference
 
+See [merchant integrations and operations](merchant-workflow.md) for publication, callbacks, Cloudflare, alerts and audited recovery (added 2026-10-30).
+
 The web proxy exposes backend routes under `/api`; direct native backend calls omit that prefix. Example: browser `/api/payments`, direct backend `http://localhost:3000/payments`. Integration clients through the web origin use `/api/api/v1/payments`.
 
 ## Authentication
@@ -27,6 +29,13 @@ API clients use `X-API-Key`; keys are shown once, hashed at rest, and share an i
 | Owner | `POST /monitoring/scan` | Run a serialized scan; inspect wallet health for individual failures |
 | Owner | `GET/POST /api-tokens`, `DELETE /api-tokens/:id` | Manage integration tokens; creation body `{ "label": "My store" }` |
 | API key | `GET/POST /api/v1/payments`, `GET /api/v1/payments/:id` | Integration create/list/detail |
+| Owner / API key | `POST /payments/:id/publish`, `/revoke` (integration prefix `/api/v1`) | Explicit sharing lifecycle |
+| Owner | `POST /configs/webhook-secret` | Generate/rotate reveal-once signing secret |
+| Owner | `GET /webhooks`, `POST /webhooks/:id/retry` | Delivery history and retry |
+| Owner | `GET /notifications`, `POST /notifications/:id/read` | Persistent success alerts |
+| Owner | `POST /recovery/scan`, `GET /recovery/:wallet`, `POST /recovery/accept` | Verified transfer review |
+| Owner | `GET /cloudflare`, `POST /cloudflare/{provision,check,reconnect,disable,remove}` | Tunnel lifecycle and health |
+| Anonymous | `GET /public-ready` | Minimal installation readiness challenge |
 | Anonymous billing token | `GET /billing/:token`, `GET /billing/:token/pdf` | One restricted billing projection/PDF |
 
 DELETE wallet archives it; history and active monitoring remain. PATCH wallet accepts description/default only, never receiving identity. New custom-token creation routes are removed. Invalid billing tokens return 404. Public billing is rate limited and never exposes recipient email, account configuration, or write actions.
@@ -41,13 +50,19 @@ Owner and integration routes share the contract:
   "description": "Website design",
   "value": "145.123456",
   "expiration_hours": 24,
-  "expected_from_address": null
+  "expected_from_address": null,
+  "external_order_id": "order-123",
+  "callback_urls": [],
+  "amount_mode": "exact",
+  "publish_billing": false
 }
 ```
 
 `value` is a positive plain decimal string with at most 14 whole digits and the chain asset's decimal precision; scientific notation, numeric JSON input, and excess precision are rejected. Expiry is a positive whole hour count up to 8760, default 24. Description is required (maximum 500 characters). Sender, if present, must validate for the chosen chain. Asset is inferred from the receiving wallet; legacy `token_source`/`token_id` inputs are rejected.
 
-Creation returns 201 with the payment row, immutable `snapshot`, canonical status, `reference`, sharing token, exact `value`, wallet/asset display fields, `public_url` (null when unconfigured), and SMTP availability. Detail includes matched transaction and paid/detected/canceled times as applicable. Billing view adds `payment_uri`/PNG data-URL `qr` only while payable.
+Creation returns 201 with the payment row, immutable `snapshot`, canonical status, `reference`, sharing token, exact `value`, wallet/asset display fields, `public_url` (null when unpublished or the billing origin is unconfigured), and SMTP availability. Detail includes matched transaction and paid/detected/canceled times as applicable. Billing view adds `payment_uri`/PNG data-URL `qr` only while payable.
+
+Creation optionally accepts `Idempotency-Key`; see the [merchant guide](merchant-workflow.md) for 30-day replay/conflict semantics, callback allowlists and unique amount reservations. New bills are unpublished by default; legacy links are preserved.
 
 ## Lists, reports, and settings
 
@@ -59,7 +74,9 @@ Creation returns 201 with the payment row, immutable `snapshot`, canonical statu
 
 Dashboard returns `today`/`month` objects (`count`, decimal-string `amount`), `counts` by status, `daily_status_counts`, `recent_successes`, `upcoming_expirations`, `legacy_unknown_paid_time`, and `generated_at`. Definitions are in the [specification](product-specification.md).
 
-Configs include `public_base_url`, `polling_minutes` (1–1440), `etherscan_enabled`, `solscan_enabled`, `chains` (`ethereum`, `bsc`, `solana` booleans), SMTP fields, and rate-limit fields. SMTP security is `starttls`, `tls`, or `none`; port range is 1–65535. Rates default to 100 requests per 15 minutes, enabled. Provider keys and SMTP password are never returned: only `etherscan_key_configured`, `solscan_key_configured`, `smtp_password_configured`. In PATCH, omit secrets to preserve them; supply null/empty string to clear. Public base URL must be an HTTP(S) origin without path, credentials, query, or fragment.
+Notification and webhook history also accept `page`/`page_size` (default 25, maximum 100), return `total`, and include global unread/status counts.
+
+Configs include `allowed_callback_origins`, `cloudflare_account_id`, `cloudflare_zone_id`, `cloudflare_hostname`, a write-only `cloudflare_api_token`, the effective read-only `billing_origin`, and `public_base_url`, `polling_minutes` (1–1440), `etherscan_enabled`, `solscan_enabled`, `chains` (`ethereum`, `bsc`, `solana` booleans), SMTP fields, and rate-limit fields. SMTP security is `starttls`, `tls`, or `none`; port range is 1–65535. Rates default to 100 requests per 15 minutes, enabled. Provider keys and SMTP password are never returned: only `etherscan_key_configured`, `solscan_key_configured`, `smtp_password_configured`. In PATCH, omit secrets to preserve them; supply null/empty string to clear. Public base URL must be an HTTP(S) origin without path, credentials, query, or fragment.
 
 ## Errors and compatibility
 

@@ -1,5 +1,7 @@
 # Self-hosting guide
 
+See [merchant integrations and operations](merchant-workflow.md) for publication, callbacks, Cloudflare, alerts and audited recovery (added 2026-10-30).
+
 ## Fresh installation
 
 Requires Docker with Compose and Node.js for secret generation. The application containers use Node.js 22, PostgreSQL 16, and Nginx.
@@ -74,7 +76,7 @@ For rollback, restore the prior software version, its pre-upgrade database and o
 - **CHAIN_UNAVAILABLE:** enable the chain/provider and save its key; a saved key alone does not prove plan entitlement.
 - **Scan error / denied access / quota:** inspect Wallets and the [provider guide](providers.md). No successful checkpoint advances on scan failure. Full active-window replay can require multiple API pages.
 - **Solscan missing instruction identity:** the adapter refuses an ambiguous multi-transfer response. Do not assume the request was paid; inspect chain evidence and resolve operationally. There is no manual mark-paid override.
-- **Expired despite receiving funds:** expiry is final, including provider outages/indexing lag. Inspect the transfer in the explorer; the application never reverses a transfer or reopens terminal intentions.
+- **Expired despite receiving funds:** expiry is final, including provider outages/indexing lag. Inspect the transfer in the explorer; the application never reverses a transfer. Use owner Payment recovery to scan verified unassigned evidence and explicitly record any acceptance.
 - **Cannot login on public HTTPS:** verify COOKIE_SECURE, browser origin, proxy path and refresh cookies. Do not mix a different browser API origin into the production same-origin configuration.
 - **Migration refusal:** keep the backup intact and resolve the reported ownership/custom-history problem explicitly; do not drop tables or bypass checks.
 - **Lost owner password:** no public reset-by-email exists. A server operator can generate a bcrypt hash with the installed bcryptjs package and replace only the owner's password hash through PostgreSQL, then delete that owner's sessions. Back up first; never disclose hashes/credentials in issue reports.

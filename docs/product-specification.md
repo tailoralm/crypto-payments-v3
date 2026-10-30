@@ -1,5 +1,7 @@
 # Self-hosted product specification
 
+See [merchant integrations and operations](merchant-workflow.md) for publication, callbacks, Cloudflare, alerts and audited recovery (added 2026-10-30).
+
 Canonical product specification, agreed 2026-10-28 and implemented in the self-hosted release. See the [current assessment](current-state.md) for verification evidence and provider-specific limits. This document takes precedence over legacy frontend/backend architecture descriptions.
 
 ## Product and ownership
@@ -26,12 +28,12 @@ Required: wallet, description, positive decimal-string amount, expiry duration. 
 | `IN_PROGRESS` | Deadline reached with no accepted transfer | `EXPIRED` |
 | `IN_PROGRESS` | Owner cancels | `CANCELED` |
 
-`SUCCESS`, `EXPIRED`, and `CANCELED` are terminal. Cancellation is an authenticated owner action; canceling never reverses an on-chain transfer. Repeated cancellation of an already canceled intention is harmless; other terminal-state cancellation attempts conflict.
+`SUCCESS`, `EXPIRED`, and `CANCELED` are terminal for automatic matching. Explicit audited owner recovery can accept verified unassigned evidence for expired or canceled requests. Cancellation is an authenticated owner action; canceling never reverses an on-chain transfer. Repeated cancellation of an already canceled intention is harmless; other terminal-state cancellation attempts conflict.
 
 ### Matching and ambiguity
 
 - Match a single successful incoming transfer to the exact chain, destination, curated contract/mint, and full atomic amount. Optional expected sender must also match. Do not truncate, round, add partial transfers, or accept overpayments automatically.
-- Eligible transfer time is `created_at <= transfer_time < expires_at`. Discovery after the deadline is permitted only while the record is still `IN_PROGRESS`, during reconciliation before expiry is committed. Once `EXPIRED`, even a later-discovered on-time transfer does not change status.
+- Eligible transfer time is `created_at <= transfer_time < expires_at`. Discovery after the deadline is permitted only while the record is still `IN_PROGRESS`, during reconciliation before expiry is committed. Once `EXPIRED`, even a later-discovered on-time transfer does not automatically change status; owner review is required.
 - Reject a new active intention if its chain, receiving address, asset, amount, and overlapping time window could match the same transfer as another active intention. An absent sender overlaps any sender; two distinct specified senders do not overlap. Use receiving identity rather than wallet row ID. Return a clear conflict asking the owner to change the amount, wallet, or sender.
 - Persist chain-specific transfer identity (transaction plus event/instruction identity), with one transfer assigned to at most one intention. Commit assignment and conditional status transition atomically.
 - This is reconciliation by observable transfer attributes, not proof of which person paid. An identical transfer after a previous request ended may satisfy a newer active request. Do not claim payer authentication.
@@ -56,7 +58,7 @@ PDF includes the same payment details and QR, generated timestamp, and status as
 
 With no public base URL, PDF and payment QR still work; no shareable HTTP link is promised. If configured, public base URL is an explicit operator setting, not derived from an untrusted request host.
 
-SMTP is optional. Owner enters a recipient email and explicitly sends the PDF; include a public link only when configured. No automatic reminders or bulk sending in v1. Show delivery acceptance/failure accurately; SMTP acceptance does not prove inbox delivery. Delivery failures do not change payment status. Mask secrets and keep recipient addresses private.
+SMTP is optional. Owner enters a recipient email and explicitly sends the PDF; include a public link only when the request is published and an origin is configured. No automatic reminders or bulk sending in v1. Show delivery acceptance/failure accurately; SMTP acceptance does not prove inbox delivery. Delivery failures do not change payment status. Mask secrets and keep recipient addresses private.
 
 ## Dashboard and history
 

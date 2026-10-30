@@ -1304,3 +1304,19 @@ footer {
     scroll-behavior: auto !important;
   }
 }
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+code.break {
+  display: block;
+  overflow-wrap: anywhere;
+}
+details {
+  padding: 12px 0;
+}
