@@ -17,6 +17,7 @@ const email = "owner@example.com",
   password = "a-long-test-password-123";
 const auth = () => ({ Authorization: "Bearer " + token });
 const pay = (value = "10.123456", extra = {}) => ({
+  publish_billing: true,
   wallet_id: wallet.id,
   description: "Integration invoice",
   value,
@@ -198,7 +199,7 @@ test("reconciliation rejects historical and wrong amounts, consumes an event onc
       .length,
     1,
   );
-  const again = await payments.createPayment(owner, pay());
+  const again = await payments.createPayment(owner, pay("10.123457"));
   await reconcile(wallet, [tx]);
   assert.equal(
     (await db("payment_intentions").where({ id: again.id }).first()).status,
@@ -345,6 +346,7 @@ test("BSC payment flows through polling, exact database storage, public status a
   ).body;
   const p = await payments.createPayment(owner, {
     wallet_id: w.id,
+    publish_billing: true,
     description: "BSC precision payment",
     value: "1.000000000000000001",
   });

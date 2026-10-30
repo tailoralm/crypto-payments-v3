@@ -70,6 +70,29 @@ import { ApiService, ViewState, Wallet } from "../shared/api.service";
               />
             </div>
           </div>
+          <label for="amount-mode">Amount matching</label
+          ><select id="amount-mode" name="amount-mode" [(ngModel)]="amountMode">
+            <option value="exact">Exact requested amount</option>
+            <option value="unique">Unique amount for same-price orders</option>
+          </select>
+          <p class="helper">
+            Unique mode adds 0.000001–0.000999 USDT. The buyer must send the
+            resulting exact amount.
+          </p>
+          <label for="order-id">External order reference (optional)</label
+          ><input
+            id="order-id"
+            name="order-id"
+            [(ngModel)]="externalOrderId"
+            maxlength="255"
+          />
+          <label class="check"
+            ><input
+              name="publish"
+              type="checkbox"
+              [(ngModel)]="publishBilling"
+            />Publish a public billing page</label
+          >
           <label for="sender"
             >Expected sender <span class="optional">optional</span></label
           ><input
@@ -99,7 +122,7 @@ import { ApiService, ViewState, Wallet } from "../shared/api.service";
         </ol>
         <div class="alert">
           A request expires permanently. Transfers discovered after final expiry
-          will not reopen it.
+          require explicit owner review.
         </div>
         <p class="muted">
           Monitoring requires an enabled explorer and your API credentials.
@@ -117,6 +140,10 @@ export class PaymentFormComponent extends ViewState {
   amount = "";
   hours = 24;
   sender = "";
+  amountMode = "exact";
+  externalOrderId = "";
+  publishBilling = false;
+  creationKey = crypto.randomUUID();
   constructor() {
     super();
     void this.run(async () => {
@@ -129,13 +156,23 @@ export class PaymentFormComponent extends ViewState {
   }
   submit() {
     void this.run(async () => {
-      const p = await this.api.request("/payments", "POST", {
-        wallet_id: this.walletId,
-        description: this.description,
-        value: this.amount,
-        expiration_hours: this.hours,
-        expected_from_address: this.sender || null,
-      });
+      const p = await this.api.request(
+        "/payments",
+        "POST",
+        {
+          amount_mode: this.amountMode,
+          publish_billing: this.publishBilling,
+          ...(this.externalOrderId
+            ? { external_order_id: this.externalOrderId }
+            : {}),
+          wallet_id: this.walletId,
+          description: this.description,
+          value: this.amount,
+          expiration_hours: this.hours,
+          expected_from_address: this.sender || null,
+        },
+        { "Idempotency-Key": this.creationKey },
+      );
       await this.router.navigate(["/payments", p.id]);
     });
   }

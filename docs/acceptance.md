@@ -2,6 +2,28 @@
 
 Implementation validated locally on 2026-10-29. The previous documentation-only phase had no runtime evidence; this record supersedes that limitation. Live explorer accounts, real transfers, external SMTP deliverability, smartphone-wallet interoperability and public HTTPS are explicitly not claimed as verified.
 
+## Merchant workflow validation — 2026-10-30
+
+The merchant extension was exercised with disposable PostgreSQL 16, production containers and Chromium. Checks include:
+
+- 33 backend unit/provider/PostgreSQL/API/upgrade tests and 3 Chromium scenarios passed.
+- Backend TypeScript and frontend Angular production builds; production images with checksum-verified cloudflared 2026.10.7 running as UID 1000.
+- Merchant PostgreSQL/API tests: concurrent idempotency across keys and owner calls, original-response replay, explicit publication/revocation, unique allocation/exhaustion with 6/18-decimal amounts, cancellation reservations, durable events/rollback, worker claims/retries/stale leases, signed callbacks, unread alerts, shared rate headers and audited recovery/replay protection.
+- Mock Cloudflare provisioning, resumable DNS conflicts, encrypted connector state, readiness challenge, ownership-safe removal and in-flight disable cancellation. Real Cloudflare credentials were not used.
+- Public gateway isolation from the Compose network: permitted SPA/assets/readiness, API-key requirement, denied administrative routes and tested encoding/path-normalization bypasses.
+- Chromium merchant publication/revocation and fractional amount disclosure; dashboard hidden-tab pause, visible-tab refresh, alert read state, focus preservation, network failure/recovery and timer cleanup; existing owner/SMTP/PDF-related browser flow retained.
+- WCAG A/AA axe checks, desktop/mobile billing screenshots and rendered PDFs. Generated all four statuses and inspected an active bill plus a two-page overflow case containing 500 unbroken description characters and a maximum-precision amount. Artifacts remain under ignored `artifacts/`.
+
+Run `npm test` and `npm run test:integration` in `backend/`, and `npm run build` in each application. The integration script includes the merchant suite and requires the disposable database described below. Run `npm run test:e2e` in `frontend/` against the isolated Compose stack. To check the internal gateway:
+
+```sh
+docker run --rm --network YOUR_COMPOSE_PROJECT_default \
+  -v "$PWD/scripts/check-public-gateway.mjs:/check.mjs:ro" \
+  node:22-bookworm-slim node /check.mjs
+```
+
+Cloudflare public HTTPS, live explorer payments, external SMTP delivery and intended smartphone-wallet QR handling remain separate operator acceptance steps; automated fixtures do not establish them.
+
 ## Executed evidence
 
 | Check | Result and coverage |

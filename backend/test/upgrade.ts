@@ -4,6 +4,7 @@ import knex from "knex";
 import { up as original } from "../src/db/migrations/20260728_000001_initial_schema";
 import { up as upgrade } from "../src/db/migrations/20261028_000002_self_hosted";
 import crypto from "crypto";
+import { up as merchant } from "../src/db/migrations/20261030_000003_merchant";
 
 test("legacy upgrade preserves settled/custom history and rejects unmapped multi-user data transactionally", async () => {
   if (process.env.DB_NAME !== "cryptopay_test") return;
@@ -77,6 +78,14 @@ test("legacy upgrade preserves settled/custom history and rejects unmapped multi
     });
     await db.transaction(upgrade);
     const saved = await db("payment_intentions").where({ id: p.id }).first();
+    const shareToken = saved.share_token;
+    await db.transaction(merchant);
+    const published = await db("payment_intentions")
+      .where({ id: p.id })
+      .first();
+    assert.equal(published.billing_published, true);
+    assert.equal(published.share_token, shareToken);
+    assert.equal(published.requested_amount, "100.123456");
     assert.equal(saved.status, "SUCCESS");
     assert.equal(saved.snapshot.amount, "100.123456");
     assert.equal(saved.snapshot.asset_label, "LEGACY");

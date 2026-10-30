@@ -1,4 +1,4 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, OnDestroy } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { RouterLink } from "@angular/router";
 import { ApiService, ViewState, Payment } from "../shared/api.service";
@@ -26,6 +26,87 @@ import { PaymentTableComponent, CountdownComponent } from "../shared/ui";
     }
     @if (busy()) {
       <p role="status">Loading your overview…</p>
+    }
+    @if (notifications) {
+      <section class="panel">
+        <h2>Payment alerts · {{ notifications.unread }} unread</h2>
+        <p role="status" aria-atomic="true">{{ announcement }}</p>
+        @for (n of notifications.items; track n.id) {
+          <p>
+            <a [routerLink]="['/payments', n.payment_id]">{{ n.message }}</a>
+            @if (!n.read_at) {
+              <button
+                class="text-button"
+                [disabled]="busy()"
+                (click)="read(n.id)"
+              >
+                Mark read
+              </button>
+            }
+          </p>
+        }
+        <div class="form-actions">
+          <button
+            [disabled]="busy() || alertPage === 1"
+            (click)="changePage('alerts', -1)"
+          >
+            Previous alerts</button
+          ><button
+            [disabled]="busy() || alertPage * 25 >= notifications.total"
+            (click)="changePage('alerts', 1)"
+          >
+            Older alerts
+          </button>
+        </div>
+      </section>
+    }
+    @if (deliveries) {
+      <section class="panel">
+        <h2>Webhook delivery</h2>
+        <p>
+          Pending {{ deliveries.counts.PENDING || 0 }} · Failed
+          {{ deliveries.counts.FAILED || 0 }} · Blocked
+          {{ deliveries.counts.BLOCKED || 0 }}
+        </p>
+        @for (d of deliveries.items; track d.id) {
+          <details>
+            <summary>{{ d.type }} · {{ d.status }}</summary>
+            <p class="break">{{ d.url }}</p>
+            <p>{{ d.error }} {{ d.http_status }}</p>
+            <a [routerLink]="['/payments', d.payment_id]">Payment details</a>
+            @if (
+              d.status === "FAILED" ||
+              d.status === "BLOCKED" ||
+              d.status === "PENDING"
+            ) {
+              <button [disabled]="busy()" (click)="retryDelivery(d.id)">
+                Retry delivery
+              </button>
+            }
+          </details>
+        }
+        <div class="form-actions">
+          <button
+            [disabled]="busy() || deliveryPage === 1"
+            (click)="changePage('deliveries', -1)"
+          >
+            Previous deliveries</button
+          ><button
+            [disabled]="busy() || deliveryPage * 25 >= deliveries.total"
+            (click)="changePage('deliveries', 1)"
+          >
+            Older deliveries
+          </button>
+        </div>
+      </section>
+    }
+    @if (monitoringErrors.length) {
+      <section class="panel">
+        <h2>Monitoring failures</h2>
+        @for (w of monitoringErrors; track w.id) {
+          <p class="alert">{{ w.description }}: {{ w.scan_error }}</p>
+        }
+      </section>
     }
     @if (data) {
       <div class="metrics">
@@ -165,18 +246,77 @@ import { PaymentTableComponent, CountdownComponent } from "../shared/ui";
       </section>
     }`,
 })
-export class DashboardComponent extends ViewState {
+export class DashboardComponent extends ViewState implements OnDestroy {
+  private seenAlerts = new Set<string>();
+  private alertsInitialized = false;
+  alertPage = 1;
+  deliveryPage = 1;
+  notifications: any;
+  deliveries: any;
+  monitoringErrors: any[] = [];
+  announcement = "";
+  timer = setInterval(() => {
+    if (!document.hidden) this.load();
+  }, 30000);
+  visible = () => {
+    if (!document.hidden) this.load();
+  };
   api = inject(ApiService);
   data: any;
   series = ["SUCCESS", "IN_PROGRESS", "EXPIRED", "CANCELED"];
   constructor() {
     super();
     this.load();
+    document.addEventListener("visibilitychange", this.visible);
   }
   load() {
-    void this.run(
-      async () => (this.data = await this.api.request("/reports/dashboard")),
-    );
+    void this.run(async () => {
+      const [data, notifications, deliveries, wallets] = await Promise.all([
+        this.api.request("/reports/dashboard"),
+        this.api.request("/notifications?page=" + this.alertPage),
+        this.api.request("/webhooks?page=" + this.deliveryPage),
+        this.api.request<any[]>("/wallets"),
+      ]);
+      if (
+        this.alertsInitialized &&
+        this.alertPage === 1 &&
+        notifications.items.some((n: any) => !this.seenAlerts.has(n.id))
+      )
+        this.announcement = `New payment received. ${notifications.unread} unread payment alerts.`;
+      notifications.items.forEach((n: any) => this.seenAlerts.add(n.id));
+      this.alertsInitialized = true;
+      this.data = data;
+      this.notifications = notifications;
+      this.deliveries = deliveries;
+      this.monitoringErrors = wallets.filter((w) => w.scan_error);
+    });
+  }
+  changePage(kind: string, delta: number) {
+    if (this.busy()) return;
+    if (kind === "alerts") this.alertPage += delta;
+    else this.deliveryPage += delta;
+    this.load();
+  }
+  ngOnDestroy() {
+    clearInterval(this.timer);
+    document.removeEventListener("visibilitychange", this.visible);
+  }
+  read(id: string) {
+    void this.run(async () => {
+      await this.api.request(`/notifications/${id}/read`, "POST", {});
+      this.notifications = await this.api.request(
+        "/notifications?page=" + this.alertPage,
+      );
+      this.announcement = `${this.notifications.unread} unread payment alerts.`;
+    });
+  }
+  retryDelivery(id: string) {
+    void this.run(async () => {
+      await this.api.request(`/webhooks/${id}/retry`, "POST", {});
+      this.deliveries = await this.api.request(
+        "/webhooks?page=" + this.deliveryPage,
+      );
+    });
   }
   total(d: any) {
     return this.series.reduce((n, s) => n + d[s], 0);

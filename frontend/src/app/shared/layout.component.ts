@@ -37,6 +37,9 @@ import { ApiService } from "./api.service";
               <path d="M4 6V4h15v4 M3 8h18v12H3Z M16 12h5v4h-5Z" /></svg
             >Wallets</a
           >
+          <a routerLink="/recovery" routerLinkActive="active"
+            >Payment recovery</a
+          >
           <a routerLink="/settings" routerLinkActive="active"
             ><svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 6h16 M4 12h16 M4 18h16" />

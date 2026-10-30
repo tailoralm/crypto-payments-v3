@@ -1,5 +1,7 @@
 # Data model and upgrade behavior
 
+See [merchant integrations and operations](merchant-workflow.md) for publication, callbacks, Cloudflare, alerts and audited recovery (added 2026-10-30).
+
 PostgreSQL 16 with Knex migrations. The [initial schema](../backend/src/db/migrations/20260728_000001_initial_schema.ts) remains intact; the [self-hosted migration](../backend/src/db/migrations/20261028_000002_self_hosted.ts) evolves it transactionally. Startup applies pending migrations before accepting requests.
 
 ## Records
@@ -11,11 +13,16 @@ PostgreSQL 16 with Knex migrations. The [initial schema](../backend/src/db/migra
 | `wallets` | Owner, chain/address, normalized address, description/default, archival, scan attempt/success/checkpoint/error |
 | `tokens` | Curated catalog; idempotent seed finds by chain/contract rather than relying on a missing conflict constraint |
 | `custom_contracts` | Preserved legacy metadata; new custom creation is disabled |
-| `payment_intentions` | Owner/wallet, reference, random sharing token, requested amount, immutable JSONB identity snapshot, lifecycle and matched evidence |
+| `payment_intentions` | Owner/wallet, reference, random sharing token, requested/payable amounts, amount mode, callback URLs, publication state, review audit, immutable JSONB identity snapshot, lifecycle and matched evidence |
 | `transfers` | Unique `(chain, tx, event)` evidence; unique nullable payment assignment |
 | `sessions` | Owner FK, opaque refresh-token hash, session UUID and expiration; rotation/logout deletes the old session |
 | `api_tokens` | SHA-256 integration-token hashes, labels, last use; raw secrets never persisted |
 | `api_buckets` | Shared atomic counter/reset time for integration rate limits |
+| `idempotency_keys` | Owner/key primary key, normalized fingerprint, original response/payment, 30-day expiration |
+| `payment_events` | Stable versioned lifecycle payloads committed with payment transitions |
+| `webhook_deliveries` | Per-destination retries, status, attempts and recoverable fenced worker leases |
+| `notifications` | One owner alert per SUCCESS event with persistent read state |
+| `cloudflare_state` | Stable installation identity, provisioning state, owned resource IDs, encrypted connector credentials |
 | `mail_deliveries` | Payment, private recipient, ACCEPTED/FAILED outcome and attempt timestamp |
 
 ## Exact values and attribution
@@ -30,7 +37,7 @@ Wallet/payment foreign keys restrict deletion of referenced history. Archive fla
 
 ## Lifecycle and timestamps
 
-Status is database constrained to IN_PROGRESS, SUCCESS, EXPIRED, CANCELED. Matching uses on-chain time in `[created_at, expires_at)`; terminal states never reopen. `paid_at` is chain time, `detected_at` is local reconciliation time, `canceled_at` marks cancellation, and `updated_at` marks lifecycle change. Legacy `concluded_*` columns remain for compatibility/evidence.
+Status is database constrained to IN_PROGRESS, SUCCESS, EXPIRED, CANCELED. Matching uses on-chain time in `[created_at, expires_at)`; terminal states never reopen automatically. Explicit audited recovery can transition EXPIRED or CANCELED to SUCCESS using verified unassigned evidence. `paid_at` is chain time, `detected_at` is local reconciliation time, `canceled_at` marks cancellation, and `updated_at` marks lifecycle change. Legacy `concluded_*` columns remain for compatibility/evidence.
 
 Scan checkpoints mark completed bounded queries. The worker replays the complete active intention window to accommodate indexing lag and persists only successful scan coverage. It uses a PostgreSQL advisory lock plus a process guard; event assignment is also transactionally guarded.
 

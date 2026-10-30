@@ -125,6 +125,17 @@ export function paymentUri(s: Snapshot): string {
 export const uuid = z.string().uuid();
 export const paymentInput = z
   .object({
+    external_order_id: z.string().trim().min(1).max(255).optional(),
+    callback_urls: z
+      .array(z.string().max(2048))
+      .max(5)
+      .default([])
+      .refine(
+        (v) => new Set(v).size === v.length,
+        "Duplicate callbacks are not allowed.",
+      ),
+    publish_billing: z.boolean().default(false),
+    amount_mode: z.enum(["exact", "unique"]).default("exact"),
     wallet_id: uuid,
     description: z.string().trim().min(1).max(500),
     value: z.string().max(40),
@@ -142,6 +153,11 @@ export const walletInput = z
   .strict();
 export const settingsSchema = z
   .object({
+    allowed_callback_origins: z.array(z.string().max(255)).max(100).default([]),
+    cloudflare_api_token: z.string().max(2000).nullable().optional(),
+    cloudflare_account_id: z.string().max(64).default(""),
+    cloudflare_zone_id: z.string().max(64).default(""),
+    cloudflare_hostname: z.string().max(253).default(""),
     public_base_url: z
       .union([
         z.literal(""),

@@ -1,8 +1,12 @@
 # Delivery status and remaining validation
 
-Updated 2026-10-29. The original [audit](archive/2026-10-28-before-implementation.md) has been addressed by the self-hosted implementation; this is no longer a scaffold completion checklist.
+See [merchant integrations and operations](merchant-workflow.md) for publication, callbacks, Cloudflare, alerts and audited recovery (added 2026-10-30).
+
+Updated 2026-10-30. The original [audit](archive/2026-10-28-before-implementation.md) has been addressed by the self-hosted implementation; this is no longer a scaffold completion checklist.
 
 ## Delivered
+
+- Merchant order references/idempotency, opt-in unique amounts, explicit publication/revocation, signed durable callbacks, polling headers, persistent alerts, reviewed recovery and optional API-provisioned Cloudflare with an isolated public gateway.
 
 - Exact atomic matching, sender/network/asset/time checks, concurrency conflicts, persistent transfer consumption and final lifecycle states.
 - Etherscan V2 Ethereum/BSC and Solscan transfer adapters with explicit credentials, pagination, bounded replay, execution evidence, error outcomes and shared throttling.
@@ -25,6 +29,6 @@ See [acceptance evidence](acceptance.md): backend and frontend builds, PostgreSQ
 
 ## Explicit boundaries
 
-Solscan multi-transfer data without instruction identity stops safely rather than guessing; extending support requires validated transaction instruction parsing. Solana independent finality verification, alternative RPC providers, manual settlement overrides, refunds, native coins, new custom tokens, teams/multiple owners, formal tax invoices and automated reminders are outside this release.
+Solscan multi-transfer data without instruction identity stops safely rather than guessing; extending support requires validated transaction instruction parsing. Solana independent finality verification, alternative RPC providers, evidence-free manual settlement overrides, refunds, native coins, new custom tokens, teams/multiple owners, formal tax invoices and automated reminders are outside this release.
 
 Legacy multi-user conversion and unresolved active custom-asset migration remain separate, explicit operator workflows. The upgrade intentionally refuses those states. No requested payment history is deleted or merged automatically.

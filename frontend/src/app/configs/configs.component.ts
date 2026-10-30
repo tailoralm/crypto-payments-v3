@@ -1,4 +1,4 @@
-import { Component, inject } from "@angular/core";
+import { Component, inject, OnDestroy, ChangeDetectorRef } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ApiService, ViewState } from "../shared/api.service";
@@ -140,6 +140,65 @@ import { ApiService, ViewState } from "../shared/api.service";
             </p>
           </div>
           <div class="settings-fields">
+            <h3>Optional Cloudflare Tunnel</h3>
+            <p class="helper">
+              Use an unused hostname in a Cloudflare-managed zone. Token
+              permissions: Account Cloudflare Tunnel Edit, Zone DNS Edit, and
+              Zone Read for validation.
+            </p>
+            <label for="cf-token"
+              >Cloudflare API token (leave blank to keep)</label
+            ><input
+              id="cf-token"
+              name="cf-token"
+              type="password"
+              [(ngModel)]="cloudflareToken"
+              autocomplete="new-password"
+            />
+            <label for="cf-account">Account ID</label
+            ><input
+              id="cf-account"
+              name="cf-account"
+              [(ngModel)]="s.cloudflare_account_id"
+            />
+            <label for="cf-zone">Zone ID</label
+            ><input
+              id="cf-zone"
+              name="cf-zone"
+              [(ngModel)]="s.cloudflare_zone_id"
+            />
+            <label for="cf-hostname">Billing hostname</label
+            ><input
+              id="cf-hostname"
+              name="cf-hostname"
+              [(ngModel)]="s.cloudflare_hostname"
+              placeholder="pay.example.com"
+            />
+            @if (cf) {
+              <p role="status">
+                Setup: {{ cf.phase || "Disabled" }} · Connector:
+                {{ cf.connector }}
+              </p>
+              @if (cf.error) {
+                <p class="alert">{{ cf.error }}</p>
+              }
+            }
+            <div class="form-actions">
+              @for (action of cfActions; track action) {
+                <button
+                  type="button"
+                  class="secondary"
+                  [disabled]="busy() && action !== 'disable'"
+                  (click)="cloudflare(action)"
+                >
+                  {{ action }}
+                </button>
+              }
+            </div>
+            <p class="helper">
+              Save settings before provisioning. Disable preserves resources;
+              remove deletes only resources created by this installation.
+            </p>
             <label for="public-url"
               >Public base URL <span class="optional">optional</span></label
             ><input
@@ -246,6 +305,42 @@ import { ApiService, ViewState } from "../shared/api.service";
             <p>Control requests from clients using your API keys.</p>
           </div>
           <div class="settings-fields">
+            <label for="callback-origins"
+              >Allowed callback origins (one per line)</label
+            ><textarea
+              id="callback-origins"
+              name="callback-origins"
+              [(ngModel)]="callbackOrigins"
+              rows="4"
+              placeholder="https://store.example.com"
+            ></textarea>
+            <p class="helper">
+              HTTPS only. Add each subdomain explicitly. Paths belong on payment
+              callback URLs.
+            </p>
+            <p>
+              Webhook signing secret:
+              {{
+                s.webhook_secret_configured ? "configured" : "not configured"
+              }}
+            </p>
+            <button
+              type="button"
+              class="secondary"
+              [disabled]="busy()"
+              (click)="rotateSecret()"
+            >
+              Generate / rotate signing secret
+            </button>
+            @if (webhookSecret) {
+              <div class="alert">
+                <strong>Copy now; shown once.</strong
+                ><code class="break">{{ webhookSecret }}</code
+                ><button type="button" (click)="webhookSecret = ''">
+                  Dismiss
+                </button>
+              </div>
+            }
             <label class="check"
               ><input
                 type="checkbox"
@@ -292,7 +387,7 @@ import { ApiService, ViewState } from "../shared/api.service";
         <h2>Integration API tokens</h2>
         <p class="muted">
           Use <code>X-API-Key</code> for authenticated requests to
-          <code>/api/v1/payments</code> behind the web proxy.
+          <code>/api/api/v1/payments</code> behind the web proxy.
         </p>
         @if (newToken) {
           <div class="alert good">
@@ -362,10 +457,30 @@ import { ApiService, ViewState } from "../shared/api.service";
       </section>
     }`,
 })
-export class ConfigsComponent extends ViewState {
+export class ConfigsComponent extends ViewState implements OnDestroy {
+  private viewChange = inject(ChangeDetectorRef);
+  timer = setInterval(() => {
+    if (!document.hidden)
+      void this.api
+        .request("/cloudflare")
+        .then((cf) => {
+          this.cf = cf;
+          this.viewChange.markForCheck();
+        })
+        .catch(() => {});
+  }, 5000);
+  ngOnDestroy() {
+    clearInterval(this.timer);
+    this.webhookSecret = "";
+  }
   api = inject(ApiService);
   s: any;
   tokens: any[] = [];
+  cf: any;
+  cloudflareToken = "";
+  callbackOrigins = "";
+  webhookSecret = "";
+  cfActions = ["provision", "check", "reconnect", "disable", "remove"];
   etherscan = "";
   solscan = "";
   smtpPassword = "";
@@ -378,17 +493,24 @@ export class ConfigsComponent extends ViewState {
     super();
     void this.run(async () => {
       this.s = await this.api.request("/configs");
+      this.callbackOrigins = (this.s.allowed_callback_origins || []).join("\n");
+      this.cf = await this.api.request("/cloudflare");
       this.tokens = await this.api.request("/api-tokens");
     });
   }
   save() {
     void this.run(async () => {
-      const {
-        etherscan_key_configured,
-        solscan_key_configured,
-        smtp_password_configured,
-        ...body
-      } = this.s;
+      const body: any = Object.fromEntries(
+        Object.entries(this.s).filter(
+          ([key]) => !key.endsWith("_configured") && key !== "billing_origin",
+        ),
+      );
+      body.allowed_callback_origins = this.callbackOrigins
+        .split(/\n/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+      if (this.cloudflareToken)
+        body.cloudflare_api_token = this.cloudflareToken;
       if (this.clearEtherscan) body.etherscan_key = null;
       else if (this.etherscan) body.etherscan_key = this.etherscan;
       if (this.clearSolscan) body.solscan_key = null;
@@ -396,11 +518,50 @@ export class ConfigsComponent extends ViewState {
       if (this.clearSmtp) body.smtp_password = null;
       else if (this.smtpPassword) body.smtp_password = this.smtpPassword;
       this.s = await this.api.request("/configs", "PATCH", body);
-      this.etherscan = this.solscan = this.smtpPassword = "";
+      this.etherscan =
+        this.solscan =
+        this.smtpPassword =
+        this.cloudflareToken =
+          "";
       this.clearEtherscan = this.clearSolscan = this.clearSmtp = false;
       this.notice.set(
         "Settings saved. Interval changes apply within one minute.",
       );
+    });
+  }
+  cloudflare(action: string) {
+    if (action === "disable") {
+      void this.api
+        .request("/cloudflare/disable", "POST", {})
+        .then((cf) => {
+          this.cf = cf;
+          this.viewChange.markForCheck();
+        })
+        .catch((e: any) => this.error.set(e.message));
+      return;
+    }
+    if (
+      action === "remove" &&
+      !confirm("Remove this installation’s Cloudflare tunnel and DNS record?")
+    )
+      return;
+    void this.run(async () => {
+      this.cf = await this.api.request("/cloudflare/" + action, "POST", {});
+    });
+  }
+  rotateSecret() {
+    if (
+      this.s.webhook_secret_configured &&
+      !confirm(
+        "Rotate signing secret? Update store verifiers; queued retries use the new secret.",
+      )
+    )
+      return;
+    void this.run(async () => {
+      this.webhookSecret = (
+        await this.api.request("/configs/webhook-secret", "POST", {})
+      ).secret;
+      this.s.webhook_secret_configured = true;
     });
   }
   createToken() {

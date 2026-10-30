@@ -2,7 +2,7 @@ import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 import nodemailer from "nodemailer";
 import db from "../db/knex";
-import { paymentUri, fail } from "./domain";
+import { paymentUri, fail, atomic, decimal } from "./domain";
 import { settings } from "./settings";
 export async function billingView(p: any): Promise<any> {
   const active =
@@ -34,17 +34,32 @@ export async function pdf(p: any): Promise<Buffer> {
     doc.on("data", (c) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
+    doc.rect(48, 48, 499, 5).fill("#0b7564");
+    doc.y = 68;
     doc.fillColor("#0f172a").fontSize(25).text("CryptoPay");
     doc
       .moveDown(0.3)
       .fontSize(12)
       .fillColor("#475569")
       .text("PAYMENT REQUEST · " + p.reference);
+    doc.moveDown(1.5).fontSize(28);
+    const amountWidth = doc.widthOfString(p.snapshot.amount + " USDT");
+    if (amountWidth > 467) doc.fontSize((28 * 467) / amountWidth);
+    const panelY = doc.y,
+      panelHeight =
+        doc.heightOfString(p.snapshot.amount + " USDT", { width: 467 }) + 32;
+    doc.roundedRect(48, panelY, 499, panelHeight, 6).fill("#edf4f2");
     doc
-      .moveDown(1.5)
-      .fillColor("#0f172a")
-      .fontSize(28)
-      .text(p.snapshot.amount + " USDT");
+      .fillColor("#142637")
+      .text(p.snapshot.amount + " USDT", 64, panelY + 16, { width: 467 });
+    doc.x = 48;
+    doc.y = panelY + panelHeight + 16;
+    if (p.amount_mode === "unique")
+      doc
+        .fontSize(10)
+        .text(
+          `Requested: ${p.requested_amount} USDT. Increment: ${decimal((BigInt(p.snapshot.atomic_amount) - BigInt(atomic(p.requested_amount, p.snapshot.decimals))).toString(), p.snapshot.decimals)} USDT. Send the exact payable amount.`,
+        );
     doc
       .moveDown(0.3)
       .fontSize(12)
@@ -76,6 +91,7 @@ export async function pdf(p: any): Promise<Buffer> {
         .text(
           "Scan with a compatible wallet. Send the exact token and amount on the specified network. Native network coin is required for fees.",
         );
+      if (doc.y + 180 > doc.page.height - 48) doc.addPage();
       doc.image(Buffer.from(view.qr.split(",")[1], "base64"), { width: 160 });
     } else
       doc
@@ -83,6 +99,12 @@ export async function pdf(p: any): Promise<Buffer> {
         .text(
           "This request is no longer payable. Do not send additional funds.",
         );
+    if (p.public_url)
+      doc
+        .moveDown()
+        .fontSize(10)
+        .fillColor("#0b7564")
+        .text("Live billing: " + p.public_url, { link: p.public_url });
     doc
       .moveDown()
       .fontSize(9)
@@ -120,7 +142,7 @@ export async function emailPayment(p: any, recipient: string): Promise<any> {
       from: s.smtp_from,
       to: recipient,
       subject: `Payment request ${p.reference}`,
-      text: `Payment request: ${p.description}\nAmount: ${p.snapshot.amount} ${p.snapshot.asset_label}\nNetwork: ${p.snapshot.chain}\nDeadline: ${new Date(p.expires_at).toISOString()}\nSee the attached PDF for payment instructions.${s.public_base_url ? `\nLive status: ${s.public_base_url}/bill/${p.share_token}` : ""}`,
+      text: `Payment request: ${p.description}\nAmount: ${p.snapshot.amount} ${p.snapshot.asset_label}\nNetwork: ${p.snapshot.chain}\nDeadline: ${new Date(p.expires_at).toISOString()}\nSee the attached PDF for payment instructions.${p.public_url ? `\nLive status: ${p.public_url}` : ""}`,
       attachments: [
         {
           filename: `${p.reference}.pdf`,
